@@ -8,6 +8,7 @@ import {
     type Relation,
 } from 'typeorm';
 import { UsersPassword } from './users-password.entity.js';
+import { Vendors } from './vendors.entity.js';
 
 @Entity({ name: 'USERS' })
 export class Users {
@@ -76,4 +77,8 @@ export class Users {
 
     @OneToOne(() => UsersPassword, (password) => password.user)
     password?: Relation<UsersPassword>;
+
+    @ManyToOne(() => Vendors, (vendor) => vendor.users, { nullable: true })
+    @JoinColumn({ name: 'VENDORS', referencedColumnName: 'VND_ID' })
+    vendor?: Relation<Vendors> | null;
 }
