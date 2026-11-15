@@ -1,34 +1,92 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    Get,
+    HttpCode,
+    HttpStatus,
+    Patch,
+    Post,
+    Req,
+    UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import { ExtractJwt } from 'passport-jwt';
 import { AuthService } from './auth.service.js';
-import { CreateAuthDto } from './dto/create-auth.dto.js';
-import { UpdateAuthDto } from './dto/update-auth.dto.js';
+import { LoginDto } from './dto/login.dto.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { LocalAuthGuard } from './guards/local-auth.guard.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { CurrentUser } from './decorators/current-user.decorator.js';
+import { Public } from './decorators/public.decorator.js';
+import { Users } from '../entities/table/users.entity.js';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+    constructor(private readonly authService: AuthService) {}
 
-  @Post()
-  create(@Body() createAuthDto: CreateAuthDto) {
-    return this.authService.create(createAuthDto);
-  }
+    /**
+     * เข้าสู่ระบบด้วย username / password (ผ่าน Passport LocalStrategy)
+     */
+    @Public()
+    @UseGuards(LocalAuthGuard)
+    @Post('login')
+    @HttpCode(HttpStatus.OK)
+    login(@Body() _loginDto: LoginDto, @CurrentUser() user: Users) {
+        return this.authService.login(user);
+    }
 
-  @Get()
-  findAll() {
-    return this.authService.findAll();
-  }
+    /**
+     * ลงทะเบียนผู้ใช้งานใหม่
+     */
+    @Public()
+    @Post('register')
+    register(@Body() registerDto: RegisterDto) {
+        return this.authService.register(registerDto);
+    }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.authService.findOne(+id);
-  }
+    /**
+     * ดึงข้อมูลผู้ใช้งานปัจจุบันจาก JWT Access Token (ผ่าน Passport JwtStrategy)
+     */
+    @UseGuards(JwtAuthGuard)
+    @Get('profile')
+    getProfile(@CurrentUser() user: Users) {
+        return this.authService.getProfile(user.USR_ID);
+    }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAuthDto: UpdateAuthDto) {
-    return this.authService.update(+id, updateAuthDto);
-  }
+    /**
+     * เปลี่ยนรหัสผ่านและเก็บรหัสผ่านเก่าไว้ใน PWD_PREVIOUS
+     */
+    @UseGuards(JwtAuthGuard)
+    @Patch('change-password')
+    changePassword(
+        @CurrentUser() user: Users,
+        @Body() changePasswordDto: ChangePasswordDto,
+    ) {
+        return this.authService.changePassword(user.USR_ID, changePasswordDto);
+    }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.authService.remove(+id);
-  }
+    /**
+     * รองรับ POST /auth/change-password เพิ่มเติมเพื่อความสะดวกในการเรียกใช้งาน
+     */
+    @UseGuards(JwtAuthGuard)
+    @Post('change-password')
+    @HttpCode(HttpStatus.OK)
+    changePasswordPost(
+        @CurrentUser() user: Users,
+        @Body() changePasswordDto: ChangePasswordDto,
+    ) {
+        return this.authService.changePassword(user.USR_ID, changePasswordDto);
+    }
+
+    /**
+     * ออกจากระบบและเพิกถอน Access Token ปัจจุบัน
+     */
+    @UseGuards(JwtAuthGuard)
+    @Post('logout')
+    @HttpCode(HttpStatus.OK)
+    logout(@Req() req: Request) {
+        const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req) ?? undefined;
+        return this.authService.logout(token);
+    }
 }
