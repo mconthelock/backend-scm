@@ -7,9 +7,11 @@
 ## 1. สถาปัตยกรรมและเทคโนโลยีที่ใช้
 
 - **Framework**: NestJS (ESM Module `"type": "module"`)
-- **Authentication Strategy**:
+- **Authentication Strategy & Guard**:
   - `passport-local`: ตรวจสอบผู้ใช้งานด้วย Username/Password
   - `passport-jwt`: ตรวจสอบความถูกต้องและสิทธิ์การเข้าถึงผ่าน Bearer JWT Token
+  - **Global Guard (`APP_GUARD`)**: เปิดใช้งาน `JwtAuthGuard` เป็น Global Guard ใน [AppModule](file:///Users/onthelock/my/php/src/backend-scm/src/app.module.ts) ทำให้ **ทุก Route / Controller ถูกกั้น (Require Login) เป็นค่าเริ่มต้นทันที**
+  - **Public Decorator (`@Public()`)**: ใช้ระบุ Route ที่ต้องการยกเว้นให้เข้าถึงได้โดยไม่ต้อง Login เช่น `/auth/login` เท่านั้น (สำหรับ `/auth/register` ถูกล็อกให้ต้องล็อกอินก่อน จึงจะสร้างผู้ใช้ได้)
 - **Database ORM**: TypeORM
   - ตาราง `USERS`: ข้อมูลผู้ใช้งานหลัก
   - ตาราง `USERS_PASSWORD`: ข้อมูลรหัสผ่านปัจจุบันและรหัสผ่านก่อนหน้า
@@ -110,7 +112,10 @@ PASSWORD_HASH_ALGO="sha256" # md5, sha256 หรือ sha512
 
 ### 4.2 ลงทะเบียนผู้ใช้ใหม่ (Register)
 - **Endpoint**: `POST /auth/register`
-- **Auth Guard**: `@Public()` (ไม่ต้องใส่ Token)
+- **Auth Guard**: `JwtAuthGuard` (บังคับต้อง Login ผ่านระบบภายในก่อนเท่านั้น)
+- **Headers**:
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <access_token>`
 - **Body**:
   ```json
   {
@@ -143,7 +148,7 @@ PASSWORD_HASH_ALGO="sha256" # md5, sha256 หรือ sha512
 
 ### 4.4 เปลี่ยนรหัสผ่าน (Change Password)
 - **Endpoint**: `PATCH /auth/change-password` หรือ `POST /auth/change-password`
-- **Auth Guard**: `JwtAuthGuard`
+- **Auth Guard**: `JwtAuthGuard` (ต้องล็อกอินก่อน)
 - **Headers**: `Authorization: Bearer <access_token>`
 - **Body**:
   ```json
@@ -165,7 +170,53 @@ PASSWORD_HASH_ALGO="sha256" # md5, sha256 หรือ sha512
 
 ---
 
-### 4.5 ออกจากระบบ (Logout)
+### 4.5 ลืมรหัสผ่าน (Forgot Password)
+- **Endpoint**: `POST /auth/forgot-password`
+- **Auth Guard**: `@Public()` (ไม่ต้องล็อกอิน)
+- **Body**:
+  ```json
+  {
+    "identifier": "admin" // หรือ "admin@example.com"
+  }
+  ```
+- **การทำงาน**:
+  - สร้าง Token สำหรับรีเซ็ตรหัสผ่านที่มีอายุสั้น (Default: `15m` จาก `RESET_PASSWORD_EXPIRES_IN`)
+  - คืนค่า Message ที่ปลอดภัย (ป้องกัน User enumeration) พร้อม `reset_token` สำหรับนำไปส่ง Email หรือใช้ตั้งรหัสผ่านใหม่
+- **Response (200 OK)**:
+  ```json
+  {
+    "message": "หากข้อมูลผู้ใช้งานถูกต้อง ระบบได้ดำเนินการส่งคำแนะนำการรีเซ็ตรหัสผ่านแล้ว",
+    "reset_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+  ```
+
+---
+
+### 4.6 ตั้งรหัสผ่านใหม่ด้วย Reset Token (Reset Password)
+- **Endpoint**: `POST /auth/reset-password`
+- **Auth Guard**: `@Public()` (ไม่ต้องล็อกอิน)
+- **Body**:
+  ```json
+  {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "newPassword": "NewPassword123"
+  }
+  ```
+- **การทำงาน**:
+  - ตรวจสอบความถูกต้องและอายุของ `token` (ประเภทต้องเป็น `reset_password`)
+  - รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิมใน `PWD_CURRENT`
+  - ย้ายรหัสเดิมไป `PWD_PREVIOUS` และอัปเดต `PWD_CURRENT`, `PWD_UPDATEDATE`, `USR_RESETDATE`
+  - ทำการเพิกถอน Token ทันที (One-time use) ไม่สามารถนำกลับมาใช้ซ้ำได้
+- **Response (200 OK)**:
+  ```json
+  {
+    "message": "ตั้งรหัสผ่านใหม่สำเร็จ สามารถเข้าสู่ระบบด้วยรหัสผ่านใหม่ได้ทันที"
+  }
+  ```
+
+---
+
+### 4.7 ออกจากระบบ (Logout)
 - **Endpoint**: `POST /auth/logout`
 - **Auth Guard**: `JwtAuthGuard`
 - **Headers**: `Authorization: Bearer <access_token>`
@@ -189,6 +240,8 @@ src/
 │   │   └── public.decorator.ts         # กำหนด Public Endpoint
 │   ├── dto/
 │   │   ├── change-password.dto.ts      # DTO เปลี่ยนรหัสผ่าน
+│   │   ├── forgot-password.dto.ts      # DTO ขอรีเซ็ตรหัสผ่าน
+│   │   ├── reset-password.dto.ts       # DTO ตั้งรหัสผ่านใหม่
 │   │   ├── login.dto.ts                # DTO เข้าสู่ระบบ
 │   │   └── register.dto.ts             # DTO ลงทะเบียนผู้ใช้
 │   ├── guards/
@@ -200,13 +253,18 @@ src/
 │   │   ├── jwt.strategy.ts             # Passport JWT Strategy
 │   │   └── local.strategy.ts           # Passport Local Strategy
 │   ├── auth.controller.ts              # API Controller
-│   ├── auth.controller.spec.ts         # Unit Test Controller
 │   ├── auth.service.ts                 # Business Logic, Hashing, Validation
-│   ├── auth.service.spec.ts            # Unit Test Service
 │   └── auth.module.ts                  # NestJS Module
 └── entities/table/
     ├── users.entity.ts                 # Entity ตาราง USERS
     └── users-password.entity.ts        # Entity ตาราง USERS_PASSWORD
+
+test/
+├── unit/
+│   └── auth/
+│       ├── auth.controller.spec.ts     # Unit Test Controller
+│       └── auth.service.spec.ts        # Unit Test Service
+└── app.e2e-spec.ts                     # E2E Test
 ```
 
 ---

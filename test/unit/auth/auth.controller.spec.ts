@@ -1,8 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { vi } from 'vitest';
-import { AuthController } from './auth.controller.js';
-import { AuthService } from './auth.service.js';
-import { Users } from '../entities/table/users.entity.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthController } from '../../../src/auth/auth.controller.js';
+import { AuthService } from '../../../src/auth/auth.service.js';
+import { Users } from '../../../src/entities/table/users.entity.js';
 
 describe('AuthController', () => {
     let controller: AuthController;

@@ -11,10 +11,13 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { StringValue } from 'ms';
 import { Users } from '../entities/table/users.entity.js';
 import { UsersPassword } from '../entities/table/users-password.entity.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { JwtPayload } from './interfaces/jwt-payload.interface.js';
 
 @Injectable()
@@ -137,6 +140,7 @@ export class AuthService {
             email: user.USR_EMAIL,
             groups: user.GROUPS,
             vendors: user.VENDORS,
+            type: 'access_token',
         };
 
         const expiresIn =
@@ -271,6 +275,124 @@ export class AuthService {
         }
 
         return this.sanitizeUser(user);
+    }
+
+    /**
+     * ร้องขอการรีเซ็ตรหัสผ่าน (Forgot Password)
+     * สร้าง Token สำหรับนำไปเปลี่ยนรหัสผ่าน (มีอายุสั้น เช่น 15 นาที)
+     */
+    async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+        const identifier = forgotPasswordDto.identifier.trim();
+        const user = await this.usersRepository.findOne({
+            where: [{ USR_LOGIN: identifier }, { USR_EMAIL: identifier }],
+        });
+
+        // เพื่อความปลอดภัย: ไม่ควรบอกผู้ใช้ว่าพบหรือไม่พบบัญชีในระบบ (ป้องกันการ enumerate username/email)
+        if (!user || user.USR_STATUS !== 1) {
+            return {
+                message:
+                    'หากข้อมูลผู้ใช้งานถูกต้อง ระบบได้ดำเนินการส่งคำแนะนำการรีเซ็ตรหัสผ่านแล้ว',
+            };
+        }
+
+        const resetExpiresIn = (this.configService.get<string>(
+            'RESET_PASSWORD_EXPIRES_IN',
+        ) || '15m') as StringValue;
+
+        const payload = {
+            sub: user.USR_ID,
+            type: 'reset_password',
+        };
+
+        const resetToken = await this.jwtService.signAsync(payload, {
+            expiresIn: resetExpiresIn,
+        });
+
+        // TODO: นำ resetToken ไปสร้าง Link และส่งผ่านระบบ Mail/SMTP
+        // ตัวอย่างลิงก์: `${frontendUrl}/reset-password?token=${resetToken}`
+
+        return {
+            message:
+                'หากข้อมูลผู้ใช้งานถูกต้อง ระบบได้ดำเนินการส่งคำแนะนำการรีเซ็ตรหัสผ่านแล้ว',
+            // ส่ง reset_token กลับไปด้วยเพื่ออำนวยความสะดวกในการทดสอบ/พัฒนา (ใน Production สามารถปิดได้)
+            reset_token: resetToken,
+        };
+    }
+
+    /**
+     * ตั้งรหัสผ่านใหม่ด้วย Reset Token
+     */
+    async resetPassword(resetPasswordDto: ResetPasswordDto) {
+        const { token, newPassword } = resetPasswordDto;
+
+        if (this.isTokenRevoked(token)) {
+            throw new BadRequestException(
+                'Token นี้ถูกใช้งานแล้ว หรือหมดอายุการใช้งาน',
+            );
+        }
+
+        let decoded: any;
+        try {
+            decoded = await this.jwtService.verifyAsync(token);
+        } catch {
+            throw new BadRequestException(
+                'Token สำหรับรีเซ็ตรหัสผ่านไม่ถูกต้อง หรือหมดอายุแล้ว',
+            );
+        }
+
+        if (decoded.type !== 'reset_password') {
+            throw new BadRequestException(
+                'ประเภทของ Token ไม่ถูกต้องสำหรับการรีเซ็ตรหัสผ่าน',
+            );
+        }
+
+        const userId = decoded.sub;
+        const user = await this.usersRepository.findOne({
+            where: { USR_ID: userId },
+        });
+
+        if (!user || user.USR_STATUS !== 1) {
+            throw new NotFoundException(
+                'ไม่พบข้อมูลผู้ใช้งาน หรือบัญชีถูกระงับ',
+            );
+        }
+
+        const userPassword = await this.usersPasswordRepository.findOne({
+            where: { USERS: userId },
+        });
+
+        if (!userPassword) {
+            throw new NotFoundException('ไม่พบข้อมูลรหัสผ่านในระบบ');
+        }
+
+        if (this.verifyPassword(newPassword, userPassword.PWD_CURRENT)) {
+            throw new BadRequestException(
+                'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม',
+            );
+        }
+
+        const now = new Date();
+        const newHashed = this.hashPassword(newPassword);
+
+        userPassword.PWD_PREVIOUS = userPassword.PWD_CURRENT;
+        userPassword.PWD_CURRENT = newHashed;
+        userPassword.PWD_UPDATEDATE = now;
+        await this.usersPasswordRepository.save(userPassword);
+
+        await this.usersRepository.update(
+            { USR_ID: userId },
+            {
+                USR_RESETDATE: now,
+                USR_LASTUPDATE: now,
+            },
+        );
+
+        // เพิกถอน resetToken ทันที เพื่อป้องกันการนำกลับมาใช้ซ้ำ (One-time use)
+        this.logout(token);
+
+        return {
+            message: 'ตั้งรหัสผ่านใหม่สำเร็จ สามารถเข้าสู่ระบบด้วยรหัสผ่านใหม่ได้ทันที',
+        };
     }
 
     /**

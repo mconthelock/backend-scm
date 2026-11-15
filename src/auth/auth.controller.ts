@@ -15,8 +15,9 @@ import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
+import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
+import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
-import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { Users } from '../entities/table/users.entity.js';
@@ -27,6 +28,7 @@ export class AuthController {
 
     /**
      * เข้าสู่ระบบด้วย username / password (ผ่าน Passport LocalStrategy)
+     * เปิดเป็น Public ไม่ต้องใช้ JWT Token
      */
     @Public()
     @UseGuards(LocalAuthGuard)
@@ -37,27 +39,44 @@ export class AuthController {
     }
 
     /**
-     * ลงทะเบียนผู้ใช้งานใหม่
+     * ลงทะเบียนผู้ใช้งานใหม่ (เฉพาะระบบภายใน/ผู้ที่ล็อกอินแล้วเท่านั้น)
      */
-    @Public()
     @Post('register')
     register(@Body() registerDto: RegisterDto) {
         return this.authService.register(registerDto);
     }
 
     /**
-     * ดึงข้อมูลผู้ใช้งานปัจจุบันจาก JWT Access Token (ผ่าน Passport JwtStrategy)
+     * ดึงข้อมูลผู้ใช้งานปัจจุบันจาก JWT Access Token
      */
-    @UseGuards(JwtAuthGuard)
     @Get('profile')
     getProfile(@CurrentUser() user: Users) {
         return this.authService.getProfile(user.USR_ID);
     }
 
     /**
+     * ร้องขอการรีเซ็ตรหัสผ่าน (ลืมรหัสผ่าน)
+     */
+    @Public()
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.OK)
+    forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+        return this.authService.forgotPassword(forgotPasswordDto);
+    }
+
+    /**
+     * ตั้งรหัสผ่านใหม่ด้วย Reset Token
+     */
+    @Public()
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+        return this.authService.resetPassword(resetPasswordDto);
+    }
+
+    /**
      * เปลี่ยนรหัสผ่านและเก็บรหัสผ่านเก่าไว้ใน PWD_PREVIOUS
      */
-    @UseGuards(JwtAuthGuard)
     @Patch('change-password')
     changePassword(
         @CurrentUser() user: Users,
@@ -69,7 +88,6 @@ export class AuthController {
     /**
      * รองรับ POST /auth/change-password เพิ่มเติมเพื่อความสะดวกในการเรียกใช้งาน
      */
-    @UseGuards(JwtAuthGuard)
     @Post('change-password')
     @HttpCode(HttpStatus.OK)
     changePasswordPost(
@@ -82,7 +100,6 @@ export class AuthController {
     /**
      * ออกจากระบบและเพิกถอน Access Token ปัจจุบัน
      */
-    @UseGuards(JwtAuthGuard)
     @Post('logout')
     @HttpCode(HttpStatus.OK)
     logout(@Req() req: Request) {

@@ -9,10 +9,10 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { vi } from 'vitest';
-import { AuthService } from './auth.service.js';
-import { Users } from '../entities/table/users.entity.js';
-import { UsersPassword } from '../entities/table/users-password.entity.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthService } from '../../../src/auth/auth.service.js';
+import { Users } from '../../../src/entities/table/users.entity.js';
+import { UsersPassword } from '../../../src/entities/table/users-password.entity.js';
 
 describe('AuthService', () => {
     let service: AuthService;
@@ -291,6 +291,52 @@ describe('AuthService', () => {
             expect(service.isTokenRevoked('sample-token')).toBe(false);
             service.logout('sample-token');
             expect(service.isTokenRevoked('sample-token')).toBe(true);
+        });
+    });
+
+    describe('forgotPassword & resetPassword', () => {
+        it('should return safe message when identifier does not exist', async () => {
+            mockUsersRepository.findOne.mockResolvedValue(null);
+            const res = await service.forgotPassword({
+                identifier: 'unknown_user',
+            });
+            expect(res.message).toContain('หากข้อมูลผู้ใช้งานถูกต้อง');
+            expect(res.reset_token).toBeUndefined();
+        });
+
+        it('should return reset_token when identifier exists', async () => {
+            mockUsersRepository.findOne.mockResolvedValue({ ...sampleUser });
+            const res = await service.forgotPassword({
+                identifier: 'tester',
+            });
+            expect(res.message).toContain('หากข้อมูลผู้ใช้งานถูกต้อง');
+            expect(res.reset_token).toBe('mock-jwt-access-token');
+        });
+
+        it('should successfully reset password with valid token and revoke the token', async () => {
+            const oldHash = service.hashPassword('OldPass123');
+            (mockJwtService as any).verifyAsync = vi.fn().mockResolvedValue({
+                sub: 1,
+                type: 'reset_password',
+            });
+
+            mockUsersRepository.findOne.mockResolvedValue({ ...sampleUser });
+            mockUsersPasswordRepository.findOne.mockResolvedValue({
+                USERS: 1,
+                PWD_CURRENT: oldHash,
+                PWD_PREVIOUS: null,
+                PWD_UPDATEDATE: new Date(),
+            });
+            mockUsersPasswordRepository.save.mockImplementation(async (p) => p);
+            mockUsersRepository.update.mockResolvedValue({ affected: 1 });
+
+            const res = await service.resetPassword({
+                token: 'valid-reset-token',
+                newPassword: 'BrandNewPassword123',
+            });
+
+            expect(res.message).toContain('ตั้งรหัสผ่านใหม่สำเร็จ');
+            expect(service.isTokenRevoked('valid-reset-token')).toBe(true);
         });
     });
 });

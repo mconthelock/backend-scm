@@ -24,6 +24,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     }
 
     async validate(req: Request, payload: JwtPayload) {
+        // ป้องกันไม่ให้ reset_token ถูกนำมาใช้เป็น Access Token ทั่วไป
+        if (payload.type && payload.type !== 'access_token') {
+            throw new UnauthorizedException('Token ไม่ถูกต้องสำหรับการเข้าใช้งาน');
+        }
+
         const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
         if (token && this.authService.isTokenRevoked(token)) {
             throw new UnauthorizedException(
