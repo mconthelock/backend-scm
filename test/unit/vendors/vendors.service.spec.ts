@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { vi } from 'vitest';
 import { NotFoundException, ConflictException } from '@nestjs/common';
@@ -73,7 +73,7 @@ describe('VendorsService', () => {
                     useValue: mockVendorsAddressRepository,
                 },
                 {
-                    provide: DataSource,
+                    provide: getDataSourceToken('dbConnection'),
                     useValue: mockDataSource,
                 },
             ],

@@ -3,7 +3,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Vendors } from '../entities/table/vendors.entity.js';
 import { VendorsCode } from '../entities/table/vendors-code.entity.js';
@@ -21,6 +21,7 @@ export class VendorsService {
         private readonly vendorsCodeRepository: Repository<VendorsCode>,
         @InjectRepository(VendorsAddress, 'dbConnection')
         private readonly vendorsAddressRepository: Repository<VendorsAddress>,
+        @InjectDataSource('dbConnection')
         private readonly dataSource: DataSource,
     ) {}
 
