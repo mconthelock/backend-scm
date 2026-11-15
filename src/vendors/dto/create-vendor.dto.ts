@@ -9,17 +9,6 @@ import {
     ValidateNested,
 } from 'class-validator';
 
-export class CreateVendorCodeDto {
-    @IsString()
-    @IsNotEmpty({ message: 'กรุณาระบุรหัสคู่ค้า (CODE_NUM)' })
-    @MaxLength(50)
-    CODE_NUM: string;
-
-    @IsOptional()
-    @IsInt()
-    CODE_STATUS?: number;
-}
-
 export class CreateVendorAddressDto {
     @IsOptional()
     @IsString()
@@ -57,6 +46,11 @@ export class CreateVendorAddressDto {
 
 export class CreateVendorDto {
     @IsString()
+    @IsNotEmpty({ message: 'กรุณาระบุรหัสคู่ค้า (VND_CODE)' })
+    @MaxLength(6, { message: 'รหัสคู่ค้าต้องมีความยาวไม่เกิน 6 ตัวอักษร' })
+    VND_CODE: string;
+
+    @IsString()
     @IsNotEmpty({ message: 'กรุณาระบุชื่อย่อหรือชื่อทางการค้า (VND_NAME)' })
     @MaxLength(150)
     VND_NAME: string;
@@ -74,12 +68,6 @@ export class CreateVendorDto {
     @IsOptional()
     @IsInt()
     VND_STATUS?: number;
-
-    @IsOptional()
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreateVendorCodeDto)
-    codes?: CreateVendorCodeDto[];
 
     @IsOptional()
     @IsArray()

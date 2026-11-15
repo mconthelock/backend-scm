@@ -2,17 +2,15 @@ import {
     Column,
     Entity,
     OneToMany,
-    PrimaryGeneratedColumn,
+    PrimaryColumn,
     type Relation,
 } from 'typeorm';
-import { VendorsCode } from './vendors-code.entity.js';
 import { VendorsAddress } from './vendors-address.entity.js';
-import { Users } from './users.entity.js';
 
 @Entity({ name: 'VENDORS' })
 export class Vendors {
-    @PrimaryGeneratedColumn({ name: 'VND_ID', type: 'int', unsigned: true })
-    VND_ID: number;
+    @PrimaryColumn({ name: 'VND_CODE', type: 'varchar', length: 6 })
+    VND_CODE: string;
 
     @Column({ name: 'VND_NAME', type: 'varchar', length: 150 })
     VND_NAME: string;
@@ -55,14 +53,8 @@ export class Vendors {
     })
     VND_USERUPDATE: string | null;
 
-    @OneToMany(() => VendorsCode, (code) => code.vendor, { cascade: true })
-    codes?: Relation<VendorsCode[]>;
-
     @OneToMany(() => VendorsAddress, (address) => address.vendor, {
         cascade: true,
     })
     addresses?: Relation<VendorsAddress[]>;
-
-    @OneToMany(() => Users, (user) => user.vendor)
-    users?: Relation<Users[]>;
 }

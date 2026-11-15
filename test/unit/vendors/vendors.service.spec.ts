@@ -1,11 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { vi } from 'vitest';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { VendorsService } from '../../../src/vendors/vendors.service.js';
+import { VendorsRepository } from '../../../src/vendors/vendors.repository.js';
 import { Vendors } from '../../../src/entities/table/vendors.entity.js';
-import { VendorsCode } from '../../../src/entities/table/vendors-code.entity.js';
 import { VendorsAddress } from '../../../src/entities/table/vendors-address.entity.js';
 
 describe('VendorsService', () => {
@@ -19,7 +18,6 @@ describe('VendorsService', () => {
         skip: vi.fn().mockReturnThis(),
         take: vi.fn().mockReturnThis(),
         getManyAndCount: vi.fn(),
-        getOne: vi.fn(),
     };
 
     const mockVendorsRepository = {
@@ -28,30 +26,14 @@ describe('VendorsService', () => {
         delete: vi.fn(),
     };
 
-    const mockVendorsCodeRepository = {
-        createQueryBuilder: vi.fn(() => mockQueryBuilder),
-    };
-
     const mockVendorsAddressRepository = {};
 
-    const mockQueryRunner = {
-        connect: vi.fn(),
-        startTransaction: vi.fn(),
-        commitTransaction: vi.fn(),
-        rollbackTransaction: vi.fn(),
-        release: vi.fn(),
-        manager: {
-            create: vi.fn((_entity, data) => data),
-            save: vi.fn(async (_entity, data) => {
-                if (Array.isArray(data)) return data;
-                return { ...data, VND_ID: 1 };
-            }),
-            delete: vi.fn(),
-        },
-    };
-
-    const mockDataSource = {
-        createQueryRunner: vi.fn(() => mockQueryRunner),
+    const mockVndRepo = {
+        findVendorByCode: vi.fn(),
+        createVendor: vi.fn(async (data) => data),
+        createAddress: vi.fn(async (data) => data),
+        createAddresses: vi.fn(async (data) => data),
+        deleteAddressesByVendor: vi.fn(),
     };
 
     beforeEach(async () => {
@@ -65,16 +47,12 @@ describe('VendorsService', () => {
                     useValue: mockVendorsRepository,
                 },
                 {
-                    provide: getRepositoryToken(VendorsCode, 'dbConnection'),
-                    useValue: mockVendorsCodeRepository,
-                },
-                {
                     provide: getRepositoryToken(VendorsAddress, 'dbConnection'),
                     useValue: mockVendorsAddressRepository,
                 },
                 {
-                    provide: getDataSourceToken('dbConnection'),
-                    useValue: mockDataSource,
+                    provide: VendorsRepository,
+                    useValue: mockVndRepo,
                 },
             ],
         }).compile();
@@ -88,7 +66,7 @@ describe('VendorsService', () => {
 
     describe('findAll', () => {
         it('should return paginated vendors', async () => {
-            const mockList = [{ VND_ID: 1, VND_NAME: 'Vendor A' }];
+            const mockList = [{ VND_CODE: 'V0001', VND_NAME: 'Vendor A' }];
             mockQueryBuilder.getManyAndCount.mockResolvedValue([mockList, 1]);
 
             const res = await service.findAll({ page: 1, limit: 10, search: 'A' });
@@ -99,66 +77,69 @@ describe('VendorsService', () => {
     });
 
     describe('findOne', () => {
-        it('should return vendor by ID', async () => {
-            const vendor = { VND_ID: 1, VND_NAME: 'Vendor A' };
-            mockVendorsRepository.findOne.mockResolvedValue(vendor);
+        it('should return vendor by VND_CODE', async () => {
+            const vendor = { VND_CODE: 'V0001', VND_NAME: 'Vendor A' };
+            mockVndRepo.findVendorByCode.mockResolvedValue(vendor);
 
-            const res = await service.findOne(1);
+            const res = await service.findOne('V0001');
             expect(res).toEqual(vendor);
         });
 
         it('should throw NotFoundException if vendor not found', async () => {
-            mockVendorsRepository.findOne.mockResolvedValue(null);
+            mockVndRepo.findVendorByCode.mockResolvedValue(null);
 
-            await expect(service.findOne(999)).rejects.toThrow(
+            await expect(service.findOne('V9999')).rejects.toThrow(
                 NotFoundException,
             );
         });
     });
 
     describe('create', () => {
-        it('should throw ConflictException if duplicate CODE_NUM exists', async () => {
-            mockQueryBuilder.getOne.mockResolvedValue({ CODE_NUM: '80001' });
+        it('should throw ConflictException if duplicate VND_CODE exists', async () => {
+            mockVendorsRepository.findOne.mockResolvedValue({ VND_CODE: 'V0001' });
 
             await expect(
                 service.create({
+                    VND_CODE: 'V0001',
                     VND_NAME: 'Test Vendor',
-                    codes: [{ CODE_NUM: '80001' }],
                 }),
             ).rejects.toThrow(ConflictException);
         });
 
-        it('should create vendor with codes and addresses in transaction', async () => {
-            mockQueryBuilder.getOne.mockResolvedValue(null);
-            const savedResult = {
-                VND_ID: 1,
+        it('should create vendor with addresses successfully', async () => {
+            mockVendorsRepository.findOne.mockResolvedValue(null); // check exists
+            mockVndRepo.findVendorByCode.mockResolvedValue({
+                VND_CODE: 'V0001',
                 VND_NAME: 'Test Vendor',
-                codes: [{ CODE_NUM: '80001' }],
                 addresses: [],
-            };
-            mockVendorsRepository.findOne.mockResolvedValue(savedResult);
+            }); // findOne after creation
 
             const res = await service.create(
                 {
+                    VND_CODE: 'V0001',
                     VND_NAME: 'Test Vendor',
-                    codes: [{ CODE_NUM: '80001' }],
+                    addresses: [
+                        {
+                            ADDR_CITY: 'Bangkok',
+                        },
+                    ],
                 },
                 'admin',
             );
 
-            expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
-            expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
-            expect(res).toEqual(savedResult);
+            expect(mockVndRepo.createVendor).toHaveBeenCalled();
+            expect(mockVndRepo.createAddresses).toHaveBeenCalled();
+            expect(res.VND_CODE).toBe('V0001');
         });
     });
 
     describe('remove', () => {
         it('should delete vendor if exists', async () => {
-            mockVendorsRepository.findOne.mockResolvedValue({ VND_ID: 1 });
+            mockVndRepo.findVendorByCode.mockResolvedValue({ VND_CODE: 'V0001' });
             mockVendorsRepository.delete.mockResolvedValue({ affected: 1 });
 
-            const res = await service.remove(1);
-            expect(res.message).toContain('ลบข้อมูลคู่ค้า ID #1 สำเร็จ');
+            const res = await service.remove('V0001');
+            expect(res.message).toContain("ลบข้อมูลคู่ค้า รหัส 'V0001' สำเร็จ");
         });
     });
 });

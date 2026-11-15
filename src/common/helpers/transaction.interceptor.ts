@@ -1,0 +1,81 @@
+import {
+    CallHandler,
+    ExecutionContext,
+    Injectable,
+    NestInterceptor,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Observable, catchError, concatMap, finalize } from 'rxjs';
+import { DataSource } from 'typeorm';
+import { FORCE_TX_KEY, TX_CONNECTION_KEY } from './transaction.decorator.js';
+import { transactionContext } from './transaction-context.js';
+
+export const ENTITY_MANAGER_KEY = 'ENTITY_MANAGER';
+
+@Injectable()
+export class TransactionInterceptor implements NestInterceptor {
+    private dataSourceMap: Record<string, DataSource>;
+
+    constructor(
+        @InjectDataSource('dbConnection')
+        private ds: DataSource,
+        private readonly reflector: Reflector,
+    ) {
+        // เพิ่ม data sources ที่นี่เมื่อมีการเพิ่ม connection ใหม่
+        this.dataSourceMap = {
+            ds: this.ds,
+            dbConnection: this.ds,
+        };
+    }
+
+    async intercept(context: ExecutionContext, next: CallHandler) {
+        // ดึงค่า connectionName จาก metadata
+        const connectionName = this.reflector.getAllAndOverride<string>(
+            TX_CONNECTION_KEY,
+            [context.getHandler(), context.getClass()],
+        );
+        const forceTx = this.reflector.getAllAndOverride<boolean>(
+            FORCE_TX_KEY,
+            [context.getHandler(), context.getClass()],
+        );
+
+        // ถ้าไม่มีการระบุ connectionName ให้ข้ามการทำงานของ interceptor นี้
+        if (!connectionName) {
+            return next.handle();
+        }
+
+        const dataSource = this.dataSourceMap[connectionName];
+
+        if (!dataSource) {
+            throw new Error(`Unknown connection: ${connectionName}`);
+        }
+
+        const queryRunner = dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        return new Observable((subscriber) => {
+            transactionContext.run(
+                { manager: queryRunner.manager, forceTx },
+                () => {
+                    next.handle()
+                        .pipe(
+                            concatMap(async (data) => {
+                                await queryRunner.commitTransaction();
+                                return data;
+                            }),
+                            catchError(async (err) => {
+                                await queryRunner.rollbackTransaction();
+                                throw err;
+                            }),
+                            finalize(async () => {
+                                await queryRunner.release();
+                            }),
+                        )
+                        .subscribe(subscriber);
+                },
+            );
+        });
+    }
+}

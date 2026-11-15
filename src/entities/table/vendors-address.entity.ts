@@ -13,8 +13,8 @@ export class VendorsAddress {
     @PrimaryGeneratedColumn({ name: 'ADDR_ID', type: 'int', unsigned: true })
     ADDR_ID: number;
 
-    @Column({ name: 'VENDOR_ID', type: 'int', unsigned: true })
-    VENDOR_ID: number;
+    @Column({ name: 'VENDOR_ID', type: 'varchar', length: 5 })
+    VENDOR_ID: string;
 
     @Column({
         name: 'ADDR_LINE1',
@@ -59,7 +59,8 @@ export class VendorsAddress {
 
     @ManyToOne(() => Vendors, (vendor) => vendor.addresses, {
         onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
     })
-    @JoinColumn({ name: 'VENDOR_ID', referencedColumnName: 'VND_ID' })
+    @JoinColumn({ name: 'VENDOR_ID', referencedColumnName: 'VND_CODE' })
     vendor?: Relation<Vendors>;
 }
