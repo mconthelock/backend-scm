@@ -4,10 +4,12 @@ import {
     Index,
     JoinColumn,
     ManyToOne,
+    OneToMany,
     PrimaryGeneratedColumn,
     type Relation,
 } from 'typeorm';
 import { Orders } from './orders.entity.js';
+import { OrdersShipmentSchedule } from './orders-shipment-schedule.entity.js';
 
 @Entity({ name: 'ORDERS_DETAIL' })
 @Index('IDX_ORDD_LINE', ['ORDD_LINE'])
@@ -101,6 +103,15 @@ export class OrdersDetail {
     ORDD_RESPONDBY: number | null;
 
     @Column({
+        name: 'ORDD_SHIPPED_QTY',
+        type: 'decimal',
+        precision: 18,
+        scale: 4,
+        default: 0.0,
+    })
+    ORDD_SHIPPED_QTY: number;
+
+    @Column({
         name: 'ORDD_RECEIVED_QTY',
         type: 'decimal',
         precision: 18,
@@ -130,4 +141,9 @@ export class OrdersDetail {
     })
     @JoinColumn({ name: 'ORDERS_ID', referencedColumnName: 'ORD_ID' })
     order?: Relation<Orders>;
+
+    @OneToMany(() => OrdersShipmentSchedule, (schedule) => schedule.orderDetail, {
+        cascade: true,
+    })
+    shipmentSchedules?: Relation<OrdersShipmentSchedule[]>;
 }

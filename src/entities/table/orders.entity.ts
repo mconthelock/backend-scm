@@ -75,7 +75,12 @@ export class Orders {
     @Column({ name: 'ADDR', type: 'int', nullable: true })
     ADDR: number | null;
 
-    @Column({ name: 'BUYERCODE', type: 'varchar', length: 20, nullable: true })
+    @Column({
+        name: 'BUYERCODE',
+        type: 'varchar',
+        length: 20,
+        nullable: true,
+    })
     BUYERCODE: string | null;
 
     @Column({ name: 'BUYER', type: 'varchar', length: 20, nullable: true })
@@ -112,6 +117,18 @@ export class Orders {
         default: () => 'CURRENT_TIMESTAMP',
     })
     ORD_LASTUPDATE: Date;
+
+    @Column({ name: 'FIRST_READ_AT', type: 'datetime', nullable: true })
+    FIRST_READ_AT: Date | null;
+
+    @Column({ name: 'FIRST_READ_BY', type: 'int', nullable: true })
+    FIRST_READ_BY: number | null;
+
+    @Column({ name: 'ACKNOWLEDGED_AT', type: 'datetime', nullable: true })
+    ACKNOWLEDGED_AT: Date | null;
+
+    @Column({ name: 'ACKNOWLEDGED_BY', type: 'int', nullable: true })
+    ACKNOWLEDGED_BY: number | null;
 
     @OneToMany(() => OrdersDetail, (detail) => detail.order, {
         cascade: true,

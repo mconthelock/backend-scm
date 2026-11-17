@@ -13,6 +13,7 @@ async function bootstrap() {
         logger: ['error', 'warn'],
     });
 
+    //app.setGlobalPrefix('api');
     app.enableVersioning({
         type: VersioningType.URI,
         defaultVersion: '1',
@@ -43,7 +44,10 @@ async function bootstrap() {
             transform: true,
             whitelist: true,
             exceptionFactory: (errors: ValidationError[]) => {
-                const formatErrors = (errors: ValidationError[], parentPath = ''): Array<{ message: string[] }> => {
+                const formatErrors = (
+                    errors: ValidationError[],
+                    parentPath = '',
+                ): Array<{ message: string[] }> => {
                     const result: Array<{ message: string[] }> = [];
 
                     errors.forEach((error: ValidationError) => {
