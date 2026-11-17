@@ -10,6 +10,7 @@ import { TransactionInterceptor } from './common/helpers/transaction.interceptor
 
 import { AuthModule } from './auth/auth.module.js';
 import { VendorsModule } from './vendors/vendors.module.js';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { VendorsModule } from './vendors/vendors.module.js';
         TypeOrmModule.forRootAsync(dbConfig),
         AuthModule,
         VendorsModule,
+        OrdersModule,
     ],
     providers: [
         {
