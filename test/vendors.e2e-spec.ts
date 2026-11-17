@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+    INestApplication,
+    ValidationPipe,
+    VersioningType,
+} from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
@@ -18,6 +22,10 @@ describe('Vendors E2E Test (Real Database)', () => {
         }).compile();
 
         app = moduleFixture.createNestApplication();
+        app.enableVersioning({
+            type: VersioningType.URI,
+            defaultVersion: '1',
+        });
         app.useGlobalPipes(
             new ValidationPipe({
                 transform: true,
@@ -32,7 +40,7 @@ describe('Vendors E2E Test (Real Database)', () => {
 
         // 1. จำลองการ Login ด้วย user 'admin' ที่มีอยู่ใน DB เพื่อรับ JWT Bearer Token
         const loginResponse = await request(app.getHttpServer())
-            .post('/auth/login')
+            .post('/v1/auth/login')
             .send({
                 username: 'admin',
                 password: '123456',
@@ -74,7 +82,7 @@ describe('Vendors E2E Test (Real Database)', () => {
         };
 
         const res = await request(app.getHttpServer())
-            .post('/vendors')
+            .post('/v1/vendors')
             .set('Authorization', `Bearer ${jwtToken}`)
             .send(newVendorPayload)
             .expect(201);
@@ -105,7 +113,7 @@ describe('Vendors E2E Test (Real Database)', () => {
 
     it('GET /vendors/:code - ควรดึงข้อมูล Vendor ที่เพิ่งสร้างจาก DB ได้ถูกต้อง', async () => {
         const res = await request(app.getHttpServer())
-            .get(`/vendors/${testVendorCode}`)
+            .get(`/v1/vendors/${testVendorCode}`)
             .set('Authorization', `Bearer ${jwtToken}`)
             .expect(200);
 

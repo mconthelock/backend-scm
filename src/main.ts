@@ -1,11 +1,21 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, BadRequestException, ValidationError } from '@nestjs/common';
+import {
+    ValidationPipe,
+    BadRequestException,
+    ValidationError,
+    VersioningType,
+} from '@nestjs/common';
 import { AppModule } from './app.module.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule, {
         logger: ['error', 'warn'],
+    });
+
+    app.enableVersioning({
+        type: VersioningType.URI,
+        defaultVersion: '1',
     });
 
     app.enableCors({

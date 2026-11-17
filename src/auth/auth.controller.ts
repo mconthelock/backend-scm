@@ -22,7 +22,10 @@ import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import { Users } from '../entities/table/users.entity.js';
 
-@Controller('auth')
+@Controller({
+    path: 'auth',
+    version: '1',
+})
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
 

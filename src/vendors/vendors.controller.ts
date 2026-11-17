@@ -19,7 +19,10 @@ import { QueryVendorDto } from './dto/query-vendor.dto.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Users } from '../entities/table/users.entity.js';
 
-@Controller('vendors')
+@Controller({
+    path: 'vendors',
+    version: '1',
+})
 export class VendorsController {
     constructor(private readonly vendorsService: VendorsService) {}
 
