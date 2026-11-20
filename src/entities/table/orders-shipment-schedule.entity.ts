@@ -46,7 +46,12 @@ export class OrdersShipmentSchedule {
     })
     VENDOR_REMARKS: string | null;
 
-    @Column({ name: 'STATUS', type: 'varchar', length: 20, default: 'SCHEDULED' })
+    @Column({
+        name: 'STATUS',
+        type: 'varchar',
+        length: 20,
+        default: 'SCHEDULED',
+    })
     STATUS: string;
 
     @Column({ name: 'ASN_NO', type: 'varchar', length: 50, nullable: true })

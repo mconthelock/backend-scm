@@ -1,11 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-    IsIn,
-    IsInt,
-    IsOptional,
-    IsString,
-    Min,
-} from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export class QueryOrderDto {
     @IsOptional()
@@ -13,7 +7,14 @@ export class QueryOrderDto {
     search?: string;
 
     @IsOptional()
-    @IsIn(['ISSUED', 'READ', 'ACKNOWLEDGED', 'PARTIAL_SHIPPED', 'SHIPPED', 'CLOSED'])
+    @IsIn([
+        'ISSUED',
+        'READ',
+        'ACKNOWLEDGED',
+        'PARTIAL_SHIPPED',
+        'SHIPPED',
+        'CLOSED',
+    ])
     status?: string;
 
     @IsOptional()

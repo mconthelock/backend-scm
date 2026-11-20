@@ -50,7 +50,9 @@ export class OrdersService {
         if (query.status) {
             const statusCode = OrderStatusCodeMap[query.status.toUpperCase()];
             if (statusCode !== undefined) {
-                qb.andWhere('order.ORD_STATUS = :status', { status: statusCode });
+                qb.andWhere('order.ORD_STATUS = :status', {
+                    status: statusCode,
+                });
             }
         }
 
@@ -83,18 +85,28 @@ export class OrdersService {
                 const dates = o.details
                     .map((d) => d.ORDD_DUEDATE)
                     .filter((d) => Boolean(d))
-                    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+                    .sort(
+                        (a, b) => new Date(a).getTime() - new Date(b).getTime(),
+                    );
                 if (dates.length > 0) {
-                    targetDeliveryDate = new Date(dates[0]).toISOString().split('T')[0];
+                    targetDeliveryDate = new Date(dates[0])
+                        .toISOString()
+                        .split('T')[0];
                 }
             }
 
             // SLA 24 ชั่วโมงหลังจากวันออก PO
-            const poDate = o.ORD_PODATE ? new Date(o.ORD_PODATE).getTime() : now.getTime();
+            const poDate = o.ORD_PODATE
+                ? new Date(o.ORD_PODATE).getTime()
+                : now.getTime();
             const slaDeadline = poDate + 24 * 60 * 60 * 1000;
             const slaRemainingHours = Math.max(
                 0,
-                Number(((slaDeadline - now.getTime()) / (1000 * 60 * 60)).toFixed(1)),
+                Number(
+                    ((slaDeadline - now.getTime()) / (1000 * 60 * 60)).toFixed(
+                        1,
+                    ),
+                ),
             );
 
             const statusName = OrderStatusNameMap[o.ORD_STATUS] || 'ISSUED';
@@ -103,7 +115,9 @@ export class OrdersService {
                 id: o.ORD_ID,
                 poNo: o.ORD_PONO,
                 revision: o.ORD_REVISION,
-                issueDate: o.ORD_PODATE ? new Date(o.ORD_PODATE).toISOString().split('T')[0] : '',
+                issueDate: o.ORD_PODATE
+                    ? new Date(o.ORD_PODATE).toISOString().split('T')[0]
+                    : '',
                 targetDeliveryDate: targetDeliveryDate || '',
                 plantCode: o.ORD_SHIPTO || 'Amata Plant 2',
                 dockGate: 'Gate B Dock',
@@ -133,23 +147,28 @@ export class OrdersService {
     async getKpis() {
         const repo = this.ordersRepo.ordersRepo;
 
-        const [pendingAcknowledgment, inProduction, pendingAsnDispatch] = await Promise.all([
-            // Pending Ack: สถานะ 1 (ISSUED) หรือ 2 (READ)
-            repo
-                .createQueryBuilder('o')
-                .where('o.ORD_STATUS IN (:...statuses)', { statuses: [1, 2] })
-                .getCount(),
-            // In Production: สถานะ 3 (ACKNOWLEDGED) หรือ 4 (PARTIAL_SHIPPED)
-            repo
-                .createQueryBuilder('o')
-                .where('o.ORD_STATUS IN (:...statuses)', { statuses: [3, 4] })
-                .getCount(),
-            // Pending ASN Dispatch: กำหนดส่งภายใน 3 วัน หรือมีงวดที่รอส่ง
-            this.ordersRepo.scheduleRepo
-                .createQueryBuilder('s')
-                .where("s.STATUS = 'SCHEDULED' AND s.ASN_NO IS NULL")
-                .getCount(),
-        ]);
+        const [pendingAcknowledgment, inProduction, pendingAsnDispatch] =
+            await Promise.all([
+                // Pending Ack: สถานะ 1 (ISSUED) หรือ 2 (READ)
+                repo
+                    .createQueryBuilder('o')
+                    .where('o.ORD_STATUS IN (:...statuses)', {
+                        statuses: [1, 2],
+                    })
+                    .getCount(),
+                // In Production: สถานะ 3 (ACKNOWLEDGED) หรือ 4 (PARTIAL_SHIPPED)
+                repo
+                    .createQueryBuilder('o')
+                    .where('o.ORD_STATUS IN (:...statuses)', {
+                        statuses: [3, 4],
+                    })
+                    .getCount(),
+                // Pending ASN Dispatch: กำหนดส่งภายใน 3 วัน หรือมีงวดที่รอส่ง
+                this.ordersRepo.scheduleRepo
+                    .createQueryBuilder('s')
+                    .where("s.STATUS = 'SCHEDULED' AND s.ASN_NO IS NULL")
+                    .getCount(),
+            ]);
 
         // Urgent Action: คำสั่งซื้อที่ใกล้ครบกำหนดส่งหรือรอ Acknowledge เกินกำหนด
         const urgentCount = await repo
@@ -199,7 +218,9 @@ export class OrdersService {
                 receivedQty,
                 unit: d.ORDD_UNIT,
                 unitPrice: Number(d.ORDD_PRICE),
-                dueDate: d.ORDD_DUEDATE ? new Date(d.ORDD_DUEDATE).toISOString().split('T')[0] : '',
+                dueDate: d.ORDD_DUEDATE
+                    ? new Date(d.ORDD_DUEDATE).toISOString().split('T')[0]
+                    : '',
                 status: d.ORDD_STATUS,
                 buyerComment: d.ORDD_BUYERCOMMENT,
                 vendorComment: d.ORDD_VENDORCOMMENT,
@@ -222,7 +243,9 @@ export class OrdersService {
             revision: order.ORD_REVISION,
             docRev: order.ORD_DOCREV,
             type: order.ORD_TYPE,
-            issueDate: order.ORD_PODATE ? new Date(order.ORD_PODATE).toISOString().split('T')[0] : '',
+            issueDate: order.ORD_PODATE
+                ? new Date(order.ORD_PODATE).toISOString().split('T')[0]
+                : '',
             plantCode: order.ORD_SHIPTO || 'Amata Plant 2',
             dockGate: 'Gate B Dock',
             status: statusName,
@@ -348,7 +371,9 @@ export class OrdersService {
     async getShipmentsByItem(itemId: number) {
         const item = await this.ordersRepo.findDetailById(itemId);
         if (!item) {
-            throw new NotFoundException(`ไม่พบรายการสินค้า Line Item ID #${itemId}`);
+            throw new NotFoundException(
+                `ไม่พบรายการสินค้า Line Item ID #${itemId}`,
+            );
         }
 
         const schedules = await this.ordersRepo.findSchedulesByItemId(itemId);
@@ -368,26 +393,36 @@ export class OrdersService {
     /**
      * 07. สร้างงวดส่งมอบย่อย (Separate Shipment)
      */
-    async createShipmentSchedule(itemId: number, dto: CreateShipmentScheduleDto) {
+    async createShipmentSchedule(
+        itemId: number,
+        dto: CreateShipmentScheduleDto,
+    ) {
         const item = await this.ordersRepo.findDetailById(itemId);
         if (!item) {
-            throw new NotFoundException(`ไม่พบรายการสินค้า Line Item ID #${itemId}`);
+            throw new NotFoundException(
+                `ไม่พบรายการสินค้า Line Item ID #${itemId}`,
+            );
         }
 
         // 1. ตรวจสอบว่า estimatedArrivalDate >= promisedShipDate
-        if (new Date(dto.estimatedArrivalDate) < new Date(dto.promisedShipDate)) {
+        if (
+            new Date(dto.estimatedArrivalDate) < new Date(dto.promisedShipDate)
+        ) {
             throw new BadRequestException(
                 'วันประมาณการถึงปลายทาง (estimatedArrivalDate) ต้องไม่น้อยกว่าวันนัดส่ง (promisedShipDate)',
             );
         }
 
         // 2. ตรวจสอบยอดรวม scheduledQty ทุกงวด ต้องไม่เกินยอดสั่งซื้อ ORDD_QTY
-        const existingSchedules = await this.ordersRepo.findSchedulesByItemId(itemId);
+        const existingSchedules =
+            await this.ordersRepo.findSchedulesByItemId(itemId);
         const currentTotal = existingSchedules.reduce(
             (sum, s) => sum + Number(s.SCHEDULED_QTY),
             0,
         );
-        const newTotal = Number((currentTotal + Number(dto.scheduledQty)).toFixed(4));
+        const newTotal = Number(
+            (currentTotal + Number(dto.scheduledQty)).toFixed(4),
+        );
         const maxOrderedQty = Number(Number(item.ORDD_QTY).toFixed(4));
 
         if (newTotal > maxOrderedQty) {
@@ -421,7 +456,10 @@ export class OrdersService {
     /**
      * 08. ปรับปรุงแก้ไขจำนวน หรือวันนัดส่งมอบของงวด
      */
-    async updateShipmentSchedule(scheduleId: number, dto: UpdateShipmentScheduleDto) {
+    async updateShipmentSchedule(
+        scheduleId: number,
+        dto: UpdateShipmentScheduleDto,
+    ) {
         const schedule = await this.ordersRepo.findScheduleById(scheduleId);
         if (!schedule) {
             throw new NotFoundException(`ไม่พบงวดส่งมอบ ID #${scheduleId}`);
@@ -434,7 +472,10 @@ export class OrdersService {
         }
 
         if (dto.promisedShipDate && dto.estimatedArrivalDate) {
-            if (new Date(dto.estimatedArrivalDate) < new Date(dto.promisedShipDate)) {
+            if (
+                new Date(dto.estimatedArrivalDate) <
+                new Date(dto.promisedShipDate)
+            ) {
                 throw new BadRequestException(
                     'วันประมาณการถึงปลายทาง ต้องไม่น้อยกว่าวันนัดส่ง',
                 );
@@ -442,12 +483,16 @@ export class OrdersService {
         }
 
         if (dto.scheduledQty !== undefined) {
-            const allSchedules = await this.ordersRepo.findSchedulesByItemId(schedule.PO_ITEM_ID);
+            const allSchedules = await this.ordersRepo.findSchedulesByItemId(
+                schedule.PO_ITEM_ID,
+            );
             const otherSum = allSchedules
                 .filter((s) => s.ID !== scheduleId)
                 .reduce((sum, s) => sum + Number(s.SCHEDULED_QTY), 0);
 
-            const item = await this.ordersRepo.findDetailById(schedule.PO_ITEM_ID);
+            const item = await this.ordersRepo.findDetailById(
+                schedule.PO_ITEM_ID,
+            );
             const maxOrderedQty = Number(item?.ORDD_QTY || 0);
 
             if (otherSum + dto.scheduledQty > maxOrderedQty) {
@@ -458,9 +503,12 @@ export class OrdersService {
             schedule.SCHEDULED_QTY = dto.scheduledQty;
         }
 
-        if (dto.promisedShipDate) schedule.PROMISED_SHIP_DATE = dto.promisedShipDate;
-        if (dto.estimatedArrivalDate) schedule.ESTIMATED_ARRIVAL_DATE = dto.estimatedArrivalDate;
-        if (dto.vendorRemarks !== undefined) schedule.VENDOR_REMARKS = dto.vendorRemarks;
+        if (dto.promisedShipDate)
+            schedule.PROMISED_SHIP_DATE = dto.promisedShipDate;
+        if (dto.estimatedArrivalDate)
+            schedule.ESTIMATED_ARRIVAL_DATE = dto.estimatedArrivalDate;
+        if (dto.vendorRemarks !== undefined)
+            schedule.VENDOR_REMARKS = dto.vendorRemarks;
         schedule.UPDATED_AT = new Date();
 
         const updated = await this.ordersRepo.scheduleRepo.save(schedule);
@@ -506,7 +554,9 @@ export class OrdersService {
     ) {
         const order = await this.ordersRepo.findOrderByIdOrPoNo(dto.poId);
         if (!order) {
-            throw new NotFoundException(`ไม่พบข้อมูลคำสั่งซื้อ ID #${dto.poId}`);
+            throw new NotFoundException(
+                `ไม่พบข้อมูลคำสั่งซื้อ ID #${dto.poId}`,
+            );
         }
 
         const now = new Date();
@@ -546,16 +596,23 @@ export class OrdersService {
         await this.ordersRepo.saveAsnItems(asnItemsData);
 
         for (const itemDto of dto.items) {
-            const lineDetail = await this.ordersRepo.findDetailById(itemDto.poItemId);
+            const lineDetail = await this.ordersRepo.findDetailById(
+                itemDto.poItemId,
+            );
             if (lineDetail) {
                 lineDetail.ORDD_SHIPPED_QTY = Number(
-                    (Number(lineDetail.ORDD_SHIPPED_QTY || 0) + Number(itemDto.dispatchQty)).toFixed(4),
+                    (
+                        Number(lineDetail.ORDD_SHIPPED_QTY || 0) +
+                        Number(itemDto.dispatchQty)
+                    ).toFixed(4),
                 );
                 await this.ordersRepo.ordersDetailRepo.save(lineDetail);
             }
 
             if (itemDto.shipmentScheduleId) {
-                const sched = await this.ordersRepo.findScheduleById(itemDto.shipmentScheduleId);
+                const sched = await this.ordersRepo.findScheduleById(
+                    itemDto.shipmentScheduleId,
+                );
                 if (sched) {
                     sched.STATUS = 'DISPATCHED';
                     sched.ASN_NO = asnNo;
@@ -566,7 +623,9 @@ export class OrdersService {
         }
 
         // ตรวจสอบยอดคงเหลือทุกรายการเพื่อปรับสถานะ PO
-        const refreshedOrder = await this.ordersRepo.findOrderByIdOrPoNo(order.ORD_ID);
+        const refreshedOrder = await this.ordersRepo.findOrderByIdOrPoNo(
+            order.ORD_ID,
+        );
         const allCompleted = (refreshedOrder?.details || []).every(
             (d) => Number(d.ORDD_SHIPPED_QTY || 0) >= Number(d.ORDD_QTY),
         );
@@ -667,7 +726,9 @@ export class OrdersService {
         await this.ordersRepo.asnRepo.save(asn);
 
         for (const receivedItem of dto.items) {
-            const asnItem = (asn.items || []).find((i) => i.PO_ITEM_ID === receivedItem.poItemId);
+            const asnItem = (asn.items || []).find(
+                (i) => i.PO_ITEM_ID === receivedItem.poItemId,
+            );
             if (asnItem) {
                 asnItem.RECEIVED_QTY = receivedItem.receivedQty;
                 asnItem.REJECTED_QTY = receivedItem.rejectedQty || 0;
@@ -675,10 +736,15 @@ export class OrdersService {
                 await this.ordersRepo.asnItemRepo.save(asnItem);
             }
 
-            const lineItem = await this.ordersRepo.findDetailById(receivedItem.poItemId);
+            const lineItem = await this.ordersRepo.findDetailById(
+                receivedItem.poItemId,
+            );
             if (lineItem) {
                 lineItem.ORDD_RECEIVED_QTY = Number(
-                    (Number(lineItem.ORDD_RECEIVED_QTY || 0) + Number(receivedItem.receivedQty)).toFixed(4),
+                    (
+                        Number(lineItem.ORDD_RECEIVED_QTY || 0) +
+                        Number(receivedItem.receivedQty)
+                    ).toFixed(4),
                 );
                 await this.ordersRepo.ordersDetailRepo.save(lineItem);
             }
@@ -717,7 +783,9 @@ export class OrdersService {
         return {
             data: logs.map((l) => ({
                 id: l.ID,
-                timestamp: l.CREATED_AT ? new Date(l.CREATED_AT).toISOString() : '',
+                timestamp: l.CREATED_AT
+                    ? new Date(l.CREATED_AT).toISOString()
+                    : '',
                 workflowEvent: l.WORKFLOW_EVENT,
                 actionCode: l.ACTION_CODE,
                 actorName: l.ACTOR_NAME,

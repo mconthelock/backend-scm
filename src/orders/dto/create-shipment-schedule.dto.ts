@@ -18,7 +18,9 @@ export class CreateShipmentScheduleDto {
     @IsString()
     promisedShipDate: string;
 
-    @IsNotEmpty({ message: 'กรุณาระบุวันประมาณการถึงปลายทาง (estimatedArrivalDate)' })
+    @IsNotEmpty({
+        message: 'กรุณาระบุวันประมาณการถึงปลายทาง (estimatedArrivalDate)',
+    })
     @IsString()
     estimatedArrivalDate: string;
 

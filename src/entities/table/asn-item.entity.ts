@@ -52,7 +52,12 @@ export class AsnItem {
     })
     REJECTED_QTY: number;
 
-    @Column({ name: 'LOT_BATCH_NO', type: 'varchar', length: 50, nullable: true })
+    @Column({
+        name: 'LOT_BATCH_NO',
+        type: 'varchar',
+        length: 50,
+        nullable: true,
+    })
     LOT_BATCH_NO: string | null;
 
     @Column({
@@ -63,7 +68,12 @@ export class AsnItem {
     })
     PACKAGE_CRATE_NO: string | null;
 
-    @Column({ name: 'QA_STATUS', type: 'varchar', length: 20, default: 'PENDING' })
+    @Column({
+        name: 'QA_STATUS',
+        type: 'varchar',
+        length: 20,
+        default: 'PENDING',
+    })
     QA_STATUS: string;
 
     @Column({

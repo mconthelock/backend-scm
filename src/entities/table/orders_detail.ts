@@ -142,8 +142,12 @@ export class OrdersDetail {
     @JoinColumn({ name: 'ORDERS_ID', referencedColumnName: 'ORD_ID' })
     order?: Relation<Orders>;
 
-    @OneToMany(() => OrdersShipmentSchedule, (schedule) => schedule.orderDetail, {
-        cascade: true,
-    })
+    @OneToMany(
+        () => OrdersShipmentSchedule,
+        (schedule) => schedule.orderDetail,
+        {
+            cascade: true,
+        },
+    )
     shipmentSchedules?: Relation<OrdersShipmentSchedule[]>;
 }

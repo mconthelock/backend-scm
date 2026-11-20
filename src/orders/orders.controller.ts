@@ -12,7 +12,6 @@ import {
     Query,
     Req,
     Res,
-    UseInterceptors,
     VERSION_NEUTRAL,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -25,7 +24,10 @@ import { CreateAsnDto } from './dto/create-asn.dto.js';
 import { DockReceiveAsnDto } from './dto/dock-receive-asn.dto.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Users } from '../entities/table/users.entity.js';
-import { OrdersResponseInterceptor } from './interceptors/orders-response.interceptor.js';
+import {
+    paginatedResponse,
+    successResponse,
+} from '../common/helpers/response.helper.js';
 import {
     UseForceTransaction,
     UseTransaction,
@@ -50,7 +52,6 @@ function getSessionId(req: Request): string {
     path: 'orders',
     version: ['1', VERSION_NEUTRAL],
 })
-@UseInterceptors(OrdersResponseInterceptor)
 export class OrdersController {
     constructor(private readonly ordersService: OrdersService) {}
 
@@ -59,8 +60,9 @@ export class OrdersController {
      * GET /orders
      */
     @Get()
-    findAll(@Query() query: QueryOrderDto) {
-        return this.ordersService.findAll(query);
+    async findAll(@Query() query: QueryOrderDto) {
+        const { data, pagination } = await this.ordersService.findAll(query);
+        return paginatedResponse(data, pagination);
     }
 
     /**
@@ -68,8 +70,9 @@ export class OrdersController {
      * GET /orders/kpis
      */
     @Get('kpis')
-    getKpis() {
-        return this.ordersService.getKpis();
+    async getKpis() {
+        const data = await this.ordersService.getKpis();
+        return successResponse(data);
     }
 
     /**
@@ -77,8 +80,9 @@ export class OrdersController {
      * GET /orders/items/:itemId/shipments
      */
     @Get('items/:itemId/shipments')
-    getShipmentsByItem(@Param('itemId') itemId: string) {
-        return this.ordersService.getShipmentsByItem(+itemId);
+    async getShipmentsByItem(@Param('itemId') itemId: string) {
+        const data = await this.ordersService.getShipmentsByItem(+itemId);
+        return successResponse(data);
     }
 
     /**
@@ -87,11 +91,19 @@ export class OrdersController {
      */
     @Post('items/:itemId/shipments')
     @HttpCode(HttpStatus.CREATED)
-    createShipmentSchedule(
+    async createShipmentSchedule(
         @Param('itemId') itemId: string,
         @Body() dto: CreateShipmentScheduleDto,
     ) {
-        return this.ordersService.createShipmentSchedule(+itemId, dto);
+        const data = await this.ordersService.createShipmentSchedule(
+            +itemId,
+            dto,
+        );
+        return successResponse(
+            data,
+            'Shipment schedule created successfully',
+            HttpStatus.CREATED,
+        );
     }
 
     /**
@@ -99,11 +111,15 @@ export class OrdersController {
      * PUT /orders/shipments/:scheduleId
      */
     @Put('shipments/:scheduleId')
-    updateShipmentSchedule(
+    async updateShipmentSchedule(
         @Param('scheduleId') scheduleId: string,
         @Body() dto: UpdateShipmentScheduleDto,
     ) {
-        return this.ordersService.updateShipmentSchedule(+scheduleId, dto);
+        const data = await this.ordersService.updateShipmentSchedule(
+            +scheduleId,
+            dto,
+        );
+        return successResponse(data, 'Shipment schedule updated successfully');
     }
 
     /**
@@ -111,8 +127,10 @@ export class OrdersController {
      * DELETE /orders/shipments/:scheduleId
      */
     @Delete('shipments/:scheduleId')
-    deleteShipmentSchedule(@Param('scheduleId') scheduleId: string) {
-        return this.ordersService.deleteShipmentSchedule(+scheduleId);
+    async deleteShipmentSchedule(@Param('scheduleId') scheduleId: string) {
+        const result =
+            await this.ordersService.deleteShipmentSchedule(+scheduleId);
+        return successResponse(null, result.message);
     }
 
     /**
@@ -123,16 +141,21 @@ export class OrdersController {
     @HttpCode(HttpStatus.CREATED)
     @UseTransaction('dbConnection')
     @UseForceTransaction()
-    createAsn(
+    async createAsn(
         @Body() dto: CreateAsnDto,
         @CurrentUser() user: Users,
         @Req() req: Request,
     ) {
-        return this.ordersService.createAsn(
+        const data = await this.ordersService.createAsn(
             dto,
             user,
             getClientIp(req),
             getSessionId(req),
+        );
+        return successResponse(
+            data,
+            'ASN created successfully',
+            HttpStatus.CREATED,
         );
     }
 
@@ -141,8 +164,9 @@ export class OrdersController {
      * GET /orders/asns/:asnNo
      */
     @Get('asns/:asnNo')
-    getAsn(@Param('asnNo') asnNo: string) {
-        return this.ordersService.getAsn(asnNo);
+    async getAsn(@Param('asnNo') asnNo: string) {
+        const data = await this.ordersService.getAsn(asnNo);
+        return successResponse(data);
     }
 
     /**
@@ -170,19 +194,20 @@ export class OrdersController {
     @Patch('asns/:asnNo/dock-receive')
     @UseTransaction('dbConnection')
     @UseForceTransaction()
-    dockReceive(
+    async dockReceive(
         @Param('asnNo') asnNo: string,
         @Body() dto: DockReceiveAsnDto,
         @CurrentUser() user: Users,
         @Req() req: Request,
     ) {
-        return this.ordersService.dockReceiveAsn(
+        const data = await this.ordersService.dockReceiveAsn(
             asnNo,
             dto,
             user,
             getClientIp(req),
             getSessionId(req),
         );
+        return successResponse(data, 'Dock receive recorded successfully');
     }
 
     /**
@@ -190,8 +215,9 @@ export class OrdersController {
      * GET /orders/:id
      */
     @Get(':id')
-    findOne(@Param('id') id: string) {
-        return this.ordersService.findOne(id);
+    async findOne(@Param('id') id: string) {
+        const data = await this.ordersService.findOne(id);
+        return successResponse(data);
     }
 
     /**
@@ -199,17 +225,19 @@ export class OrdersController {
      * POST /orders/:id/read
      */
     @Post(':id/read')
-    recordFirstRead(
+    @HttpCode(HttpStatus.OK)
+    async recordFirstRead(
         @Param('id') id: string,
         @CurrentUser() user: Users,
         @Req() req: Request,
     ) {
-        return this.ordersService.recordFirstRead(
+        const data = await this.ordersService.recordFirstRead(
             id,
             user,
             getClientIp(req),
             getSessionId(req),
         );
+        return successResponse(data);
     }
 
     /**
@@ -217,19 +245,21 @@ export class OrdersController {
      * POST /orders/:id/acknowledge
      */
     @Post(':id/acknowledge')
-    acknowledgeOrder(
+    @HttpCode(HttpStatus.OK)
+    async acknowledgeOrder(
         @Param('id') id: string,
         @Body() dto: AcknowledgeOrderDto,
         @CurrentUser() user: Users,
         @Req() req: Request,
     ) {
-        return this.ordersService.acknowledgeOrder(
+        const data = await this.ordersService.acknowledgeOrder(
             id,
             dto,
             user,
             getClientIp(req),
             getSessionId(req),
         );
+        return successResponse(data, 'Order acknowledged successfully');
     }
 
     /**
@@ -237,8 +267,9 @@ export class OrdersController {
      * GET /orders/:id/audit-logs
      */
     @Get(':id/audit-logs')
-    getAuditLogs(@Param('id') id: string) {
-        return this.ordersService.getAuditLogs(id);
+    async getAuditLogs(@Param('id') id: string) {
+        const { data } = await this.ordersService.getAuditLogs(id);
+        return successResponse(data);
     }
 
     /**
@@ -246,10 +277,7 @@ export class OrdersController {
      * GET /orders/:id/audit-logs/export
      */
     @Get(':id/audit-logs/export')
-    async exportAuditLogsCsv(
-        @Param('id') id: string,
-        @Res() res: Response,
-    ) {
+    async exportAuditLogsCsv(@Param('id') id: string, @Res() res: Response) {
         const csvData = await this.ordersService.exportAuditLogsCsv(id);
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader(
@@ -264,10 +292,7 @@ export class OrdersController {
      * GET /orders/:id/export/pdf
      */
     @Get(':id/export/pdf')
-    async exportPoPdf(
-        @Param('id') id: string,
-        @Res() res: Response,
-    ) {
+    async exportPoPdf(@Param('id') id: string, @Res() res: Response) {
         const buffer = await this.ordersService.exportPoPdf(id);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader(
@@ -282,7 +307,8 @@ export class OrdersController {
      * GET /orders/:id/export/edi
      */
     @Get(':id/export/edi')
-    exportPoEdi(@Param('id') id: string) {
-        return this.ordersService.exportPoEdi(id);
+    async exportPoEdi(@Param('id') id: string) {
+        const data = await this.ordersService.exportPoEdi(id);
+        return successResponse(data);
     }
 }

@@ -1,9 +1,4 @@
-import {
-    Column,
-    Entity,
-    Index,
-    PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity({ name: 'PO_AUDIT_LOGS' })
 @Index('IDX_AUDIT_PO_ID', ['PO_ID'])
@@ -30,7 +25,12 @@ export class OrdersAuditLog {
     @Column({ name: 'IP_ADDRESS', type: 'varchar', length: 50 })
     IP_ADDRESS: string;
 
-    @Column({ name: 'SESSION_ID', type: 'varchar', length: 100, nullable: true })
+    @Column({
+        name: 'SESSION_ID',
+        type: 'varchar',
+        length: 100,
+        nullable: true,
+    })
     SESSION_ID: string | null;
 
     @Column({ name: 'DETAILS', type: 'text', nullable: true })
