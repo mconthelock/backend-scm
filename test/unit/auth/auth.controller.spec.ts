@@ -13,6 +13,7 @@ describe('AuthController', () => {
         getProfile: vi.fn(),
         changePassword: vi.fn(),
         logout: vi.fn(),
+        verifyResetToken: vi.fn(),
     };
 
     const sampleUser: Users = {
@@ -75,5 +76,21 @@ describe('AuthController', () => {
         const result = await controller.getProfile(sampleUser);
         expect(mockAuthService.getProfile).toHaveBeenCalledWith(1);
         expect(result).toEqual(sampleUser);
+    });
+
+    it('should call authService.verifyResetToken on GET /auth/verify-reset-token', async () => {
+        const expected = { valid: true, message: 'Token ถูกต้อง' };
+        mockAuthService.verifyResetToken.mockResolvedValue(expected);
+        const result = await controller.verifyResetToken('valid-token');
+        expect(mockAuthService.verifyResetToken).toHaveBeenCalledWith('valid-token');
+        expect(result).toEqual(expected);
+    });
+
+    it('should call authService.verifyResetToken on POST /auth/verify-reset-token', async () => {
+        const expected = { valid: true, message: 'Token ถูกต้อง' };
+        mockAuthService.verifyResetToken.mockResolvedValue(expected);
+        const result = await controller.verifyResetTokenPost({ token: 'valid-token' });
+        expect(mockAuthService.verifyResetToken).toHaveBeenCalledWith('valid-token');
+        expect(result).toEqual(expected);
     });
 });

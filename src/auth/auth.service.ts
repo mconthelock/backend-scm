@@ -19,6 +19,7 @@ import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { JwtPayload } from './interfaces/jwt-payload.interface.js';
+import { MailService } from '../common/mail/mail.service.js';
 
 @Injectable()
 export class AuthService {
@@ -31,6 +32,7 @@ export class AuthService {
         private readonly usersPasswordRepository: Repository<UsersPassword>,
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
+        private readonly mailService: MailService,
     ) {}
 
     /**
@@ -308,14 +310,85 @@ export class AuthService {
             expiresIn: resetExpiresIn,
         });
 
-        // TODO: นำ resetToken ไปสร้าง Link และส่งผ่านระบบ Mail/SMTP
-        // ตัวอย่างลิงก์: `${frontendUrl}/reset-password?token=${resetToken}`
+        // ส่งอีเมลสำหรับรีเซ็ตรหัสผ่านไปยังอีเมลของผู้ใช้ (ผ่าน Mail Service -> Mailpit / SMTP)
+        if (user.USR_EMAIL) {
+            await this.mailService.sendPasswordResetEmail(
+                user.USR_EMAIL,
+                user.USR_NAME || user.USR_LOGIN,
+                resetToken,
+            );
+        }
 
         return {
             message:
                 'หากข้อมูลผู้ใช้งานถูกต้อง ระบบได้ดำเนินการส่งคำแนะนำการรีเซ็ตรหัสผ่านแล้ว',
             // ส่ง reset_token กลับไปด้วยเพื่ออำนวยความสะดวกในการทดสอบ/พัฒนา (ใน Production สามารถปิดได้)
             reset_token: resetToken,
+        };
+    }
+
+    /**
+     * ตรวจสอบว่า Reset Password Token ยังใช้งานได้หรือไม่ (ยังไม่หมดอายุและยังไม่ถูกใช้งาน)
+     */
+    async verifyResetToken(token: string) {
+        if (!token || typeof token !== 'string' || !token.trim()) {
+            throw new BadRequestException('กรุณาระบุ Token สำหรับตรวจสอบ');
+        }
+
+        const trimmedToken = token.trim();
+
+        if (this.isTokenRevoked(trimmedToken)) {
+            return {
+                valid: false,
+                message: 'ลิงก์รีเซ็ตรหัสผ่านนี้ถูกใช้งานไปแล้ว หรือหมดอายุการใช้งาน',
+                reason: 'REVOKED',
+            };
+        }
+
+        let decoded: any;
+        try {
+            decoded = await this.jwtService.verifyAsync(trimmedToken);
+        } catch (error: any) {
+            const isExpired = error?.name === 'TokenExpiredError';
+            return {
+                valid: false,
+                message: isExpired
+                    ? 'ลิงก์รีเซ็ตรหัสผ่านหมดอายุแล้ว กรุณาทำรายการใหม่อีกครั้ง'
+                    : 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้อง หรือรูปแบบไม่สมบูรณ์',
+                reason: isExpired ? 'EXPIRED' : 'INVALID',
+            };
+        }
+
+        if (decoded?.type !== 'reset_password') {
+            return {
+                valid: false,
+                message: 'ประเภทของ Token ไม่ถูกต้องสำหรับการรีเซ็ตรหัสผ่าน',
+                reason: 'INVALID_TYPE',
+            };
+        }
+
+        const userId = decoded.sub;
+        const user = await this.usersRepository.findOne({
+            where: { USR_ID: userId },
+        });
+
+        if (!user || user.USR_STATUS !== 1) {
+            return {
+                valid: false,
+                message: 'ไม่พบข้อมูลผู้ใช้งาน หรือบัญชีผู้ใช้งานถูกระงับ',
+                reason: 'USER_INACTIVE',
+            };
+        }
+
+        return {
+            valid: true,
+            message: 'Token ถูกต้องและยังไม่หมดอายุ สามารถใช้ตั้งรหัสผ่านใหม่ได้',
+            userId: user.USR_ID,
+            username: user.USR_LOGIN,
+            email: user.USR_EMAIL,
+            expiresAt: decoded.exp
+                ? new Date(decoded.exp * 1000).toISOString()
+                : undefined,
         };
     }
 

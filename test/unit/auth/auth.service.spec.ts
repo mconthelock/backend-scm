@@ -11,6 +11,7 @@ import {
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from '../../../src/auth/auth.service.js';
+import { MailService } from '../../../src/common/mail/mail.service.js';
 import { Users } from '../../../src/entities/table/users.entity.js';
 import { UsersPassword } from '../../../src/entities/table/users-password.entity.js';
 
@@ -45,6 +46,11 @@ describe('AuthService', () => {
             if (key === 'JWT_SECRET') return 'test-secret';
             return undefined;
         }),
+    };
+
+    const mockMailService = {
+        sendMail: vi.fn().mockResolvedValue(undefined),
+        sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
     };
 
     const sampleUser: Users = {
@@ -86,6 +92,10 @@ describe('AuthService', () => {
                 {
                     provide: ConfigService,
                     useValue: mockConfigService,
+                },
+                {
+                    provide: MailService,
+                    useValue: mockMailService,
                 },
             ],
         }).compile();
@@ -311,6 +321,11 @@ describe('AuthService', () => {
             });
             expect(res.message).toContain('หากข้อมูลผู้ใช้งานถูกต้อง');
             expect(res.reset_token).toBe('mock-jwt-access-token');
+            expect(mockMailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+                sampleUser.USR_EMAIL,
+                sampleUser.USR_NAME,
+                'mock-jwt-access-token',
+            );
         });
 
         it('should successfully reset password with valid token and revoke the token', async () => {
@@ -337,6 +352,86 @@ describe('AuthService', () => {
 
             expect(res.message).toContain('ตั้งรหัสผ่านใหม่สำเร็จ');
             expect(service.isTokenRevoked('valid-reset-token')).toBe(true);
+        });
+    });
+
+    describe('verifyResetToken', () => {
+        it('should throw BadRequestException if token is missing or empty', async () => {
+            await expect(service.verifyResetToken('')).rejects.toThrow(
+                BadRequestException,
+            );
+        });
+
+        it('should return valid: false with reason REVOKED if token has been revoked', async () => {
+            service.logout('revoked-token');
+            const res = await service.verifyResetToken('revoked-token');
+            expect(res.valid).toBe(false);
+            expect(res.reason).toBe('REVOKED');
+        });
+
+        it('should return valid: false with reason EXPIRED when token is expired', async () => {
+            const expiredError = new Error('jwt expired');
+            expiredError.name = 'TokenExpiredError';
+            (mockJwtService as any).verifyAsync = vi
+                .fn()
+                .mockRejectedValue(expiredError);
+
+            const res = await service.verifyResetToken('expired-token');
+            expect(res.valid).toBe(false);
+            expect(res.reason).toBe('EXPIRED');
+            expect(res.message).toContain('หมดอายุแล้ว');
+        });
+
+        it('should return valid: false with reason INVALID when token is invalid', async () => {
+            const invalidError = new Error('invalid signature');
+            invalidError.name = 'JsonWebTokenError';
+            (mockJwtService as any).verifyAsync = vi
+                .fn()
+                .mockRejectedValue(invalidError);
+
+            const res = await service.verifyResetToken('invalid-token');
+            expect(res.valid).toBe(false);
+            expect(res.reason).toBe('INVALID');
+        });
+
+        it('should return valid: false with reason INVALID_TYPE if payload type is not reset_password', async () => {
+            (mockJwtService as any).verifyAsync = vi.fn().mockResolvedValue({
+                sub: 1,
+                type: 'access_token',
+            });
+
+            const res = await service.verifyResetToken('access-token');
+            expect(res.valid).toBe(false);
+            expect(res.reason).toBe('INVALID_TYPE');
+        });
+
+        it('should return valid: false if user does not exist or is inactive', async () => {
+            (mockJwtService as any).verifyAsync = vi.fn().mockResolvedValue({
+                sub: 999,
+                type: 'reset_password',
+            });
+            mockUsersRepository.findOne.mockResolvedValue(null);
+
+            const res = await service.verifyResetToken('valid-token-no-user');
+            expect(res.valid).toBe(false);
+            expect(res.reason).toBe('USER_INACTIVE');
+        });
+
+        it('should return valid: true with details if token is valid and user is active', async () => {
+            const exp = Math.floor(Date.now() / 1000) + 900;
+            (mockJwtService as any).verifyAsync = vi.fn().mockResolvedValue({
+                sub: 1,
+                type: 'reset_password',
+                exp,
+            });
+            mockUsersRepository.findOne.mockResolvedValue({ ...sampleUser });
+
+            const res = await service.verifyResetToken('valid-active-token');
+            expect(res.valid).toBe(true);
+            expect(res.userId).toBe(1);
+            expect(res.username).toBe(sampleUser.USR_LOGIN);
+            expect(res.email).toBe(sampleUser.USR_EMAIL);
+            expect(res.expiresAt).toBeDefined();
         });
     });
 });

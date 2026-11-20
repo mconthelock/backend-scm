@@ -13,7 +13,7 @@ async function bootstrap() {
         logger: ['error', 'warn'],
     });
 
-    //app.setGlobalPrefix('api');
+    app.setGlobalPrefix('api');
     app.enableVersioning({
         type: VersioningType.URI,
         defaultVersion: '1',
@@ -26,6 +26,7 @@ async function bootstrap() {
                 const u = new URL(origin);
                 const host = u.hostname.toLowerCase();
                 if (
+                    origin === 'http://localhost:8080' ||
                     host === 'mitsubishielevatorasia.co.th' ||
                     host.endsWith('.mitsubishielevatorasia.co.th') ||
                     host === 'localhost' ||
@@ -37,6 +38,13 @@ async function bootstrap() {
             cb(new Error('HTTP CORS blocked'), false);
         },
         credentials: true,
+        allowedHeaders: [
+            'Content-Type',
+            'Accept',
+            'Authorization',
+            'X-CSRF-Token',
+            'X-Requested-With',
+        ],
     });
 
     app.useGlobalPipes(

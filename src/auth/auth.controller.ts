@@ -6,6 +6,7 @@ import {
     HttpStatus,
     Patch,
     Post,
+    Query,
     Req,
     UseGuards,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { RegisterDto } from './dto/register.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
+import { VerifyResetTokenDto } from './dto/verify-reset-token.dto.js';
 import { LocalAuthGuard } from './guards/local-auth.guard.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
@@ -65,6 +67,26 @@ export class AuthController {
     @HttpCode(HttpStatus.OK)
     forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
         return this.authService.forgotPassword(forgotPasswordDto);
+    }
+
+    /**
+     * ตรวจสอบว่า Reset Password Token ยังใช้งานได้หรือไม่ (ยังไม่หมดอายุและยังไม่ถูกใช้งาน)
+     * รองรับทั้ง Query String เช่น GET /auth/verify-reset-token?token=...
+     */
+    @Public()
+    @Get('verify-reset-token')
+    verifyResetToken(@Query('token') token: string) {
+        return this.authService.verifyResetToken(token);
+    }
+
+    /**
+     * ตรวจสอบว่า Reset Password Token ยังใช้งานได้หรือไม่ (POST /auth/verify-reset-token)
+     */
+    @Public()
+    @Post('verify-reset-token')
+    @HttpCode(HttpStatus.OK)
+    verifyResetTokenPost(@Body() verifyResetTokenDto: VerifyResetTokenDto) {
+        return this.authService.verifyResetToken(verifyResetTokenDto.token);
     }
 
     /**
