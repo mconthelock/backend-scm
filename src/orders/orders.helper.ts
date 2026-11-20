@@ -1,10 +1,65 @@
-import { Orders } from '../../entities/table/orders.entity.js';
-import { OrdersAuditLog } from '../../entities/table/orders-audit-log.entity.js';
-import { AdvanceShippingNotice } from '../../entities/table/advance-shipping-notice.entity.js';
+import { Orders } from '../entities/table/orders.entity.js';
+import { OrdersAuditLog } from '../entities/table/orders-audit-log.entity.js';
+import { AdvanceShippingNotice } from '../entities/table/advance-shipping-notice.entity.js';
+import { OrderStatusNameMap } from './dto/order-status.enum.js';
 import {
     generateCsv,
     generateSimplePdf,
-} from '../../common/helpers/export.helper.js';
+} from '../common/helpers/export.helper.js';
+
+/**
+ * แปลง Entity Orders 1 รายการให้อยู่ในรูปแบบ Summary สำหรับตารางรายการ PO
+ */
+export function formatOrderSummary(o: Orders, now: Date = new Date()) {
+    let targetDeliveryDate: string | null = null;
+    if (o.details && o.details.length > 0) {
+        const dates = o.details
+            .map((d) => d.ORDD_DUEDATE)
+            .filter((d) => Boolean(d))
+            .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+        if (dates.length > 0) {
+            targetDeliveryDate = new Date(dates[0]).toISOString().split('T')[0];
+        }
+    }
+
+    // SLA 24 ชั่วโมงหลังจากวันออก PO
+    const poDate = o.ORD_PODATE
+        ? new Date(o.ORD_PODATE).getTime()
+        : now.getTime();
+    const slaDeadline = poDate + 24 * 60 * 60 * 1000;
+    const slaRemainingHours = Math.max(
+        0,
+        Number(((slaDeadline - now.getTime()) / (1000 * 60 * 60)).toFixed(1)),
+    );
+
+    const statusName = OrderStatusNameMap[o.ORD_STATUS] || 'ISSUED';
+
+    return {
+        id: o.ORD_ID,
+        poNo: o.ORD_PONO,
+        revision: o.ORD_REVISION,
+        issueDate: o.ORD_PODATE
+            ? new Date(o.ORD_PODATE).toISOString().split('T')[0]
+            : '',
+        targetDeliveryDate: targetDeliveryDate || '',
+        plantCode: o.ORD_SHIPTO || 'Amata Plant 2',
+        dockGate: 'Gate B Dock',
+        status: statusName,
+        itemCount: o.details?.length || 0,
+        totalAmount: Number(o.ORD_AMOUNT || 0),
+        currency: o.ORD_CURRENCY || 'THB',
+        isRead: Boolean(o.FIRST_READ_AT),
+        slaRemainingHours,
+    };
+}
+
+/**
+ * แปลงรายการ Entity Orders เป็น Array ของ Summary สำหรับหน้าตาราง PO
+ */
+export function formatOrderList(items: Orders[]) {
+    const now = new Date();
+    return items.map((o) => formatOrderSummary(o, now));
+}
 
 /**
  * แปลงรายการ Audit Logs ของ PO เป็นไฟล์ CSV

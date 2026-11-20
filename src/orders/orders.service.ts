@@ -17,16 +17,48 @@ import {
 } from './dto/order-status.enum.js';
 import { Users } from '../entities/table/users.entity.js';
 import {
+    formatOrderList,
     generateAuditLogsCsv,
     generateDeliverySlipPdf,
     generateEdi850,
     generatePurchaseOrderPdf,
-} from './helpers/export.helper.js';
+} from './orders.helper.js';
+import { SearchOrdersDto } from './dto/search-orders.dto.js';
+import { applyDynamicFilters } from '../common/helpers/query.helper.js';
 
 @Injectable()
 export class OrdersService {
     constructor(private readonly ordersRepo: OrdersRepository) {}
 
+    async search(query: SearchOrdersDto) {
+        const { page: rawPage, limit: rawLimit, ...rawFilters } = query;
+        const page = rawPage && rawPage > 0 ? Number(rawPage) : 1;
+        const limit = rawLimit && rawLimit > 0 ? Number(rawLimit) : 10;
+        const skip = (page - 1) * limit;
+
+        const filters = Object.fromEntries(
+            Object.entries(rawFilters).filter(([, v]) => v !== undefined),
+        );
+
+        const qb = this.ordersRepo.ordersRepo
+            .createQueryBuilder('ord')
+            .leftJoinAndSelect('ord.details', 'details');
+        await applyDynamicFilters(qb, filters, 'ord');
+
+        qb.orderBy('ord.ORD_PODATE', 'DESC').skip(skip).take(limit);
+
+        const [items, total] = await qb.getManyAndCount();
+
+        return {
+            data: formatOrderList(items),
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit) || 1,
+            },
+        };
+    }
     /**
      * 01. ดึงรายการ PO ทั้งหมด พร้อม Pagination, Sorting และ Multi-filter
      */
@@ -77,61 +109,9 @@ export class OrdersService {
         qb.orderBy('order.ORD_PODATE', 'DESC').skip(skip).take(limit);
 
         const [items, total] = await qb.getManyAndCount();
-        const now = new Date();
-
-        const formattedData = items.map((o) => {
-            let targetDeliveryDate: string | null = null;
-            if (o.details && o.details.length > 0) {
-                const dates = o.details
-                    .map((d) => d.ORDD_DUEDATE)
-                    .filter((d) => Boolean(d))
-                    .sort(
-                        (a, b) => new Date(a).getTime() - new Date(b).getTime(),
-                    );
-                if (dates.length > 0) {
-                    targetDeliveryDate = new Date(dates[0])
-                        .toISOString()
-                        .split('T')[0];
-                }
-            }
-
-            // SLA 24 ชั่วโมงหลังจากวันออก PO
-            const poDate = o.ORD_PODATE
-                ? new Date(o.ORD_PODATE).getTime()
-                : now.getTime();
-            const slaDeadline = poDate + 24 * 60 * 60 * 1000;
-            const slaRemainingHours = Math.max(
-                0,
-                Number(
-                    ((slaDeadline - now.getTime()) / (1000 * 60 * 60)).toFixed(
-                        1,
-                    ),
-                ),
-            );
-
-            const statusName = OrderStatusNameMap[o.ORD_STATUS] || 'ISSUED';
-
-            return {
-                id: o.ORD_ID,
-                poNo: o.ORD_PONO,
-                revision: o.ORD_REVISION,
-                issueDate: o.ORD_PODATE
-                    ? new Date(o.ORD_PODATE).toISOString().split('T')[0]
-                    : '',
-                targetDeliveryDate: targetDeliveryDate || '',
-                plantCode: o.ORD_SHIPTO || 'Amata Plant 2',
-                dockGate: 'Gate B Dock',
-                status: statusName,
-                itemCount: o.details?.length || 0,
-                totalAmount: Number(o.ORD_AMOUNT || 0),
-                currency: o.ORD_CURRENCY || 'THB',
-                isRead: Boolean(o.FIRST_READ_AT),
-                slaRemainingHours,
-            };
-        });
 
         return {
-            data: formattedData,
+            data: formatOrderList(items),
             pagination: {
                 page,
                 limit,

@@ -16,12 +16,6 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { OrdersService } from './orders.service.js';
-import { QueryOrderDto } from './dto/query-order.dto.js';
-import { AcknowledgeOrderDto } from './dto/acknowledge-order.dto.js';
-import { CreateShipmentScheduleDto } from './dto/create-shipment-schedule.dto.js';
-import { UpdateShipmentScheduleDto } from './dto/update-shipment-schedule.dto.js';
-import { CreateAsnDto } from './dto/create-asn.dto.js';
-import { DockReceiveAsnDto } from './dto/dock-receive-asn.dto.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Users } from '../entities/table/users.entity.js';
 import {
@@ -32,6 +26,14 @@ import {
     UseForceTransaction,
     UseTransaction,
 } from '../common/helpers/transaction.decorator.js';
+
+import { SearchOrdersDto } from './dto/search-orders.dto.js';
+import { QueryOrderDto } from './dto/query-order.dto.js';
+import { AcknowledgeOrderDto } from './dto/acknowledge-order.dto.js';
+import { CreateShipmentScheduleDto } from './dto/create-shipment-schedule.dto.js';
+import { UpdateShipmentScheduleDto } from './dto/update-shipment-schedule.dto.js';
+import { CreateAsnDto } from './dto/create-asn.dto.js';
+import { DockReceiveAsnDto } from './dto/dock-receive-asn.dto.js';
 
 function getClientIp(req: Request): string {
     const forwarded = req.headers['x-forwarded-for'];
@@ -62,6 +64,13 @@ export class OrdersController {
     @Get()
     async findAll(@Query() query: QueryOrderDto) {
         const { data, pagination } = await this.ordersService.findAll(query);
+        return paginatedResponse(data, pagination);
+    }
+
+    @Post('search')
+    @HttpCode(HttpStatus.OK)
+    async search(@Body() query: SearchOrdersDto) {
+        const { data, pagination } = await this.ordersService.search(query);
         return paginatedResponse(data, pagination);
     }
 
