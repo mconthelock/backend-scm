@@ -14,6 +14,7 @@ describe('Vendors E2E Test (Real Database)', () => {
     let app: INestApplication;
     let dataSource: DataSource;
     let jwtToken: string;
+    let originalAdminPassword: string | null = null;
     const testVendorCode = `T${Date.now().toString().slice(-4)}`;
 
     beforeAll(async () => {
@@ -38,6 +39,16 @@ describe('Vendors E2E Test (Real Database)', () => {
             getDataSourceToken('dbConnection'),
         );
 
+        // จัดเตรียมรหัสผ่าน admin เป็น 123456 ชั่วคราวสำหรับการทดสอบ
+        const passRows = await dataSource.query(
+            'SELECT PWD_CURRENT FROM USERS_PASSWORD WHERE USERS = 1',
+        );
+        originalAdminPassword = passRows[0]?.PWD_CURRENT ?? null;
+        await dataSource.query(
+            'UPDATE USERS_PASSWORD SET PWD_CURRENT = ? WHERE USERS = 1',
+            ['8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'],
+        );
+
         // 1. จำลองการ Login ด้วย user 'admin' ที่มีอยู่ใน DB เพื่อรับ JWT Bearer Token
         const loginResponse = await request(app.getHttpServer())
             .post('/v1/auth/login')
@@ -52,6 +63,14 @@ describe('Vendors E2E Test (Real Database)', () => {
     });
 
     afterAll(async () => {
+        // คืนค่ารหัสผ่านเดิมของ admin หลังจบการทดสอบ
+        if (originalAdminPassword && dataSource?.isInitialized) {
+            await dataSource.query(
+                'UPDATE USERS_PASSWORD SET PWD_CURRENT = ? WHERE USERS = 1',
+                [originalAdminPassword],
+            );
+        }
+
         // ทำความสะอาดข้อมูลหลังจบการทดสอบ หากมีการสร้าง Vendor ไว้
         if (testVendorCode && dataSource?.isInitialized) {
             await dataSource.query('DELETE FROM VENDORS WHERE VND_CODE = ?', [

@@ -63,11 +63,13 @@ describe('AuthController', () => {
         };
         mockAuthService.login.mockResolvedValue(expected);
 
+        const mockReq = { headers: {}, ip: '127.0.0.1' } as any;
         const result = await controller.login(
             { username: 'tester', password: 'Secret' },
             sampleUser,
+            mockReq,
         );
-        expect(mockAuthService.login).toHaveBeenCalledWith(sampleUser);
+        expect(mockAuthService.login).toHaveBeenCalledWith(sampleUser, mockReq);
         expect(result).toEqual(expected);
     });
 

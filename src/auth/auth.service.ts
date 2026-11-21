@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { StringValue } from 'ms';
+import type { Request } from 'express';
 import { Users } from '../entities/table/users.entity.js';
 import { UsersPassword } from '../entities/table/users-password.entity.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -20,6 +21,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { JwtPayload } from './interfaces/jwt-payload.interface.js';
 import { MailService } from '../common/mail/mail.service.js';
+import { AccessLogService } from '../common/access-log/access-log.service.js';
 
 @Injectable()
 export class AuthService {
@@ -33,6 +35,7 @@ export class AuthService {
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
         private readonly mailService: MailService,
+        private readonly accessLogService: AccessLogService,
     ) {}
 
     /**
@@ -82,16 +85,34 @@ export class AuthService {
     async validateUser(
         username: string,
         password: string,
+        req?: Request,
     ): Promise<Users | null> {
         const user = await this.usersRepository.findOne({
             where: { USR_LOGIN: username },
         });
 
         if (!user) {
+            await this.accessLogService.log({
+                req,
+                program: 'LOGIN',
+                user: username,
+                status: 0,
+                reason: 'ไม่พบชื่อผู้ใช้งานในระบบ',
+                httpStatus: 401,
+            });
             return null;
         }
 
         if (user.USR_STATUS !== 1) {
+            await this.accessLogService.log({
+                req,
+                program: 'LOGIN',
+                user: username,
+                status: 0,
+                reason: 'บัญชีผู้ใช้งานถูกระงับการใช้งาน',
+                httpStatus: 403,
+                metadata: { userId: user.USR_ID },
+            });
             throw new ForbiddenException('บัญชีผู้ใช้งานถูกระงับการใช้งาน');
         }
 
@@ -103,6 +124,15 @@ export class AuthService {
             !userPassword ||
             !this.verifyPassword(password, userPassword.PWD_CURRENT)
         ) {
+            await this.accessLogService.log({
+                req,
+                program: 'LOGIN',
+                user: username,
+                status: 0,
+                reason: 'รหัสผ่านไม่ถูกต้อง',
+                httpStatus: 401,
+                metadata: { userId: user.USR_ID },
+            });
             return null;
         }
 
@@ -127,7 +157,7 @@ export class AuthService {
     /**
      * สร้าง JWT Access Token และอัปเดตเวลาเข้าสู่ระบบล่าสุด (USR_LASTLOGIN)
      */
-    async login(user: Users) {
+    async login(user: Users, req?: Request) {
         const now = new Date();
         await this.usersRepository.update(
             { USR_ID: user.USR_ID },
@@ -149,6 +179,20 @@ export class AuthService {
             this.configService.get<string>('JWT_EXPIRES_IN') || '1d';
         const accessToken = await this.jwtService.signAsync(payload);
 
+        await this.accessLogService.log({
+            req,
+            program: 'LOGIN',
+            user: user.USR_LOGIN,
+            status: 1,
+            reason: 'เข้าสู่ระบบสำเร็จ',
+            httpStatus: 200,
+            metadata: {
+                userId: user.USR_ID,
+                groups: user.GROUPS,
+                vendors: user.VENDORS,
+            },
+        });
+
         return {
             access_token: accessToken,
             token_type: 'Bearer',
@@ -160,12 +204,23 @@ export class AuthService {
     /**
      * ลงทะเบียนผู้ใช้งานใหม่ลงในตาราง USERS และ USERS_PASSWORD
      */
-    async register(registerDto: RegisterDto) {
+    async register(registerDto: RegisterDto, req?: Request, currentUser?: Users) {
         const existingUser = await this.usersRepository.findOne({
             where: { USR_LOGIN: registerDto.USR_LOGIN },
         });
 
         if (existingUser) {
+            await this.accessLogService.log({
+                req,
+                program: 'REGISTER',
+                user: registerDto.USR_LOGIN,
+                status: 0,
+                reason: 'ชื่อผู้ใช้งาน (USR_LOGIN) นี้มีอยู่ในระบบแล้ว',
+                httpStatus: 409,
+                metadata: {
+                    registeredBy: currentUser?.USR_LOGIN ?? null,
+                },
+            });
             throw new ConflictException(
                 'ชื่อผู้ใช้งาน (USR_LOGIN) นี้มีอยู่ในระบบแล้ว',
             );
@@ -198,6 +253,19 @@ export class AuthService {
 
         await this.usersPasswordRepository.save(userPassword);
 
+        await this.accessLogService.log({
+            req,
+            program: 'REGISTER',
+            user: registerDto.USR_LOGIN,
+            status: 1,
+            reason: 'สร้างบัญชีผู้ใช้งานสำเร็จ',
+            httpStatus: 201,
+            metadata: {
+                newUserId: savedUser.USR_ID,
+                registeredBy: currentUser?.USR_LOGIN ?? null,
+            },
+        });
+
         return {
             message: 'สร้างบัญชีผู้ใช้งานสำเร็จ',
             user: this.sanitizeUser(savedUser),
@@ -207,12 +275,24 @@ export class AuthService {
     /**
      * เปลี่ยนรหัสผ่านและบันทึกรหัสผ่านเดิมไว้ใน PWD_PREVIOUS
      */
-    async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+    async changePassword(
+        userId: number,
+        changePasswordDto: ChangePasswordDto,
+        req?: Request,
+    ) {
         const user = await this.usersRepository.findOne({
             where: { USR_ID: userId },
         });
 
         if (!user) {
+            await this.accessLogService.log({
+                req,
+                program: 'CHANGE_PASSWORD',
+                user: `ID:${userId}`,
+                status: 0,
+                reason: 'ไม่พบข้อมูลผู้ใช้งาน',
+                httpStatus: 404,
+            });
             throw new NotFoundException('ไม่พบข้อมูลผู้ใช้งาน');
         }
 
@@ -227,6 +307,15 @@ export class AuthService {
                 userPassword.PWD_CURRENT,
             )
         ) {
+            await this.accessLogService.log({
+                req,
+                program: 'CHANGE_PASSWORD',
+                user: user.USR_LOGIN,
+                status: 0,
+                reason: 'รหัสผ่านปัจจุบันไม่ถูกต้อง',
+                httpStatus: 401,
+                metadata: { userId },
+            });
             throw new UnauthorizedException('รหัสผ่านปัจจุบันไม่ถูกต้อง');
         }
 
@@ -236,6 +325,15 @@ export class AuthService {
                 userPassword.PWD_CURRENT,
             )
         ) {
+            await this.accessLogService.log({
+                req,
+                program: 'CHANGE_PASSWORD',
+                user: user.USR_LOGIN,
+                status: 0,
+                reason: 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านปัจจุบัน',
+                httpStatus: 400,
+                metadata: { userId },
+            });
             throw new BadRequestException(
                 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านปัจจุบัน',
             );
@@ -258,6 +356,16 @@ export class AuthService {
                 USR_LASTUPDATE: now,
             },
         );
+
+        await this.accessLogService.log({
+            req,
+            program: 'CHANGE_PASSWORD',
+            user: user.USR_LOGIN,
+            status: 1,
+            reason: 'เปลี่ยนรหัสผ่านสำเร็จ',
+            httpStatus: 200,
+            metadata: { userId },
+        });
 
         return {
             message: 'เปลี่ยนรหัสผ่านสำเร็จ',
@@ -283,7 +391,7 @@ export class AuthService {
      * ร้องขอการรีเซ็ตรหัสผ่าน (Forgot Password)
      * สร้าง Token สำหรับนำไปเปลี่ยนรหัสผ่าน (มีอายุสั้น เช่น 15 นาที)
      */
-    async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+    async forgotPassword(forgotPasswordDto: ForgotPasswordDto, req?: Request) {
         const identifier = forgotPasswordDto.identifier.trim();
         const user = await this.usersRepository.findOne({
             where: [{ USR_LOGIN: identifier }, { USR_EMAIL: identifier }],
@@ -291,6 +399,14 @@ export class AuthService {
 
         // เพื่อความปลอดภัย: ไม่ควรบอกผู้ใช้ว่าพบหรือไม่พบบัญชีในระบบ (ป้องกันการ enumerate username/email)
         if (!user || user.USR_STATUS !== 1) {
+            await this.accessLogService.log({
+                req,
+                program: 'FORGOT_PASSWORD',
+                user: identifier,
+                status: 0,
+                reason: 'ร้องขอการรีเซ็ตรหัสผ่านแต่ไม่พบบัญชีผู้ใช้งานหรือบัญชีถูกระงับ',
+                httpStatus: 200,
+            });
             return {
                 message:
                     'หากข้อมูลผู้ใช้งานถูกต้อง ระบบได้ดำเนินการส่งคำแนะนำการรีเซ็ตรหัสผ่านแล้ว',
@@ -318,6 +434,19 @@ export class AuthService {
                 resetToken,
             );
         }
+
+        await this.accessLogService.log({
+            req,
+            program: 'FORGOT_PASSWORD',
+            user: user.USR_LOGIN,
+            status: 1,
+            reason: 'ส่งคำขอรีเซ็ตรหัสผ่านไปยังอีเมลสำเร็จ',
+            httpStatus: 200,
+            metadata: {
+                userId: user.USR_ID,
+                email: user.USR_EMAIL,
+            },
+        });
 
         return {
             message:
@@ -395,10 +524,18 @@ export class AuthService {
     /**
      * ตั้งรหัสผ่านใหม่ด้วย Reset Token
      */
-    async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    async resetPassword(resetPasswordDto: ResetPasswordDto, req?: Request) {
         const { token, newPassword } = resetPasswordDto;
 
         if (this.isTokenRevoked(token)) {
+            await this.accessLogService.log({
+                req,
+                program: 'RESET_PASSWORD',
+                user: 'UNKNOWN',
+                status: 0,
+                reason: 'Token นี้ถูกใช้งานแล้ว หรือหมดอายุการใช้งาน',
+                httpStatus: 400,
+            });
             throw new BadRequestException(
                 'Token นี้ถูกใช้งานแล้ว หรือหมดอายุการใช้งาน',
             );
@@ -408,12 +545,28 @@ export class AuthService {
         try {
             decoded = await this.jwtService.verifyAsync(token);
         } catch {
+            await this.accessLogService.log({
+                req,
+                program: 'RESET_PASSWORD',
+                user: 'UNKNOWN',
+                status: 0,
+                reason: 'Token สำหรับรีเซ็ตรหัสผ่านไม่ถูกต้อง หรือหมดอายุแล้ว',
+                httpStatus: 400,
+            });
             throw new BadRequestException(
                 'Token สำหรับรีเซ็ตรหัสผ่านไม่ถูกต้อง หรือหมดอายุแล้ว',
             );
         }
 
         if (decoded.type !== 'reset_password') {
+            await this.accessLogService.log({
+                req,
+                program: 'RESET_PASSWORD',
+                user: 'UNKNOWN',
+                status: 0,
+                reason: 'ประเภทของ Token ไม่ถูกต้องสำหรับการรีเซ็ตรหัสผ่าน',
+                httpStatus: 400,
+            });
             throw new BadRequestException(
                 'ประเภทของ Token ไม่ถูกต้องสำหรับการรีเซ็ตรหัสผ่าน',
             );
@@ -425,6 +578,14 @@ export class AuthService {
         });
 
         if (!user || user.USR_STATUS !== 1) {
+            await this.accessLogService.log({
+                req,
+                program: 'RESET_PASSWORD',
+                user: `ID:${userId}`,
+                status: 0,
+                reason: 'ไม่พบข้อมูลผู้ใช้งาน หรือบัญชีถูกระงับ',
+                httpStatus: 404,
+            });
             throw new NotFoundException(
                 'ไม่พบข้อมูลผู้ใช้งาน หรือบัญชีถูกระงับ',
             );
@@ -439,6 +600,15 @@ export class AuthService {
         }
 
         if (this.verifyPassword(newPassword, userPassword.PWD_CURRENT)) {
+            await this.accessLogService.log({
+                req,
+                program: 'RESET_PASSWORD',
+                user: user.USR_LOGIN,
+                status: 0,
+                reason: 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม',
+                httpStatus: 400,
+                metadata: { userId: user.USR_ID },
+            });
             throw new BadRequestException(
                 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม',
             );
@@ -461,7 +631,17 @@ export class AuthService {
         );
 
         // เพิกถอน resetToken ทันที เพื่อป้องกันการนำกลับมาใช้ซ้ำ (One-time use)
-        this.logout(token);
+        await this.logout(token, req, user);
+
+        await this.accessLogService.log({
+            req,
+            program: 'RESET_PASSWORD',
+            user: user.USR_LOGIN,
+            status: 1,
+            reason: 'ตั้งรหัสผ่านใหม่สำเร็จ',
+            httpStatus: 200,
+            metadata: { userId: user.USR_ID },
+        });
 
         return {
             message: 'ตั้งรหัสผ่านใหม่สำเร็จ สามารถเข้าสู่ระบบด้วยรหัสผ่านใหม่ได้ทันที',
@@ -471,15 +651,29 @@ export class AuthService {
     /**
      * ออกจากระบบและเพิกถอน JWT Token ปัจจุบัน
      */
-    logout(token?: string) {
+    async logout(token?: string, req?: Request, currentUser?: Users) {
+        let username = currentUser?.USR_LOGIN;
         if (token) {
             this.cleanupExpiredTokens();
             const decoded = this.jwtService.decode(token) as JwtPayload | null;
+            if (!username && decoded?.username) {
+                username = decoded.username;
+            }
             const expMs = decoded?.exp
                 ? decoded.exp * 1000
                 : Date.now() + 24 * 60 * 60 * 1000;
             this.revokedTokens.set(token, expMs);
         }
+
+        await this.accessLogService.log({
+            req,
+            program: 'LOGOUT',
+            user: username || 'ANONYMOUS',
+            status: 1,
+            reason: 'ออกจากระบบสำเร็จ',
+            httpStatus: 200,
+            metadata: currentUser ? { userId: currentUser.USR_ID } : null,
+        });
 
         return {
             message: 'ออกจากระบบสำเร็จ',

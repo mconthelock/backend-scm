@@ -39,16 +39,24 @@ export class AuthController {
     @UseGuards(LocalAuthGuard)
     @Post('login')
     @HttpCode(HttpStatus.OK)
-    login(@Body() _loginDto: LoginDto, @CurrentUser() user: Users) {
-        return this.authService.login(user);
+    login(
+        @Body() _loginDto: LoginDto,
+        @CurrentUser() user: Users,
+        @Req() req: Request,
+    ) {
+        return this.authService.login(user, req);
     }
 
     /**
      * ลงทะเบียนผู้ใช้งานใหม่ (เฉพาะระบบภายใน/ผู้ที่ล็อกอินแล้วเท่านั้น)
      */
     @Post('register')
-    register(@Body() registerDto: RegisterDto) {
-        return this.authService.register(registerDto);
+    register(
+        @Body() registerDto: RegisterDto,
+        @Req() req: Request,
+        @CurrentUser() user?: Users,
+    ) {
+        return this.authService.register(registerDto, req, user);
     }
 
     /**
@@ -65,8 +73,11 @@ export class AuthController {
     @Public()
     @Post('forgot-password')
     @HttpCode(HttpStatus.OK)
-    forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-        return this.authService.forgotPassword(forgotPasswordDto);
+    forgotPassword(
+        @Body() forgotPasswordDto: ForgotPasswordDto,
+        @Req() req: Request,
+    ) {
+        return this.authService.forgotPassword(forgotPasswordDto, req);
     }
 
     /**
@@ -95,8 +106,11 @@ export class AuthController {
     @Public()
     @Post('reset-password')
     @HttpCode(HttpStatus.OK)
-    resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
-        return this.authService.resetPassword(resetPasswordDto);
+    resetPassword(
+        @Body() resetPasswordDto: ResetPasswordDto,
+        @Req() req: Request,
+    ) {
+        return this.authService.resetPassword(resetPasswordDto, req);
     }
 
     /**
@@ -106,8 +120,13 @@ export class AuthController {
     changePassword(
         @CurrentUser() user: Users,
         @Body() changePasswordDto: ChangePasswordDto,
+        @Req() req: Request,
     ) {
-        return this.authService.changePassword(user.USR_ID, changePasswordDto);
+        return this.authService.changePassword(
+            user.USR_ID,
+            changePasswordDto,
+            req,
+        );
     }
 
     /**
@@ -118,8 +137,13 @@ export class AuthController {
     changePasswordPost(
         @CurrentUser() user: Users,
         @Body() changePasswordDto: ChangePasswordDto,
+        @Req() req: Request,
     ) {
-        return this.authService.changePassword(user.USR_ID, changePasswordDto);
+        return this.authService.changePassword(
+            user.USR_ID,
+            changePasswordDto,
+            req,
+        );
     }
 
     /**
@@ -127,8 +151,8 @@ export class AuthController {
      */
     @Post('logout')
     @HttpCode(HttpStatus.OK)
-    logout(@Req() req: Request) {
+    logout(@Req() req: Request, @CurrentUser() user?: Users) {
         const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req) ?? undefined;
-        return this.authService.logout(token);
+        return this.authService.logout(token, req, user);
     }
 }

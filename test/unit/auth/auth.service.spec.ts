@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from '../../../src/auth/auth.service.js';
 import { MailService } from '../../../src/common/mail/mail.service.js';
+import { AccessLogService } from '../../../src/common/access-log/access-log.service.js';
 import { Users } from '../../../src/entities/table/users.entity.js';
 import { UsersPassword } from '../../../src/entities/table/users-password.entity.js';
 
@@ -51,6 +52,10 @@ describe('AuthService', () => {
     const mockMailService = {
         sendMail: vi.fn().mockResolvedValue(undefined),
         sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockAccessLogService = {
+        log: vi.fn().mockResolvedValue(null),
     };
 
     const sampleUser: Users = {
@@ -96,6 +101,10 @@ describe('AuthService', () => {
                 {
                     provide: MailService,
                     useValue: mockMailService,
+                },
+                {
+                    provide: AccessLogService,
+                    useValue: mockAccessLogService,
                 },
             ],
         }).compile();

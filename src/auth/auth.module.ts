@@ -13,12 +13,14 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { Users } from '../entities/table/users.entity.js';
 import { UsersPassword } from '../entities/table/users-password.entity.js';
 import { MailModule } from '../common/mail/mail.module.js';
+import { AccessLogModule } from '../common/access-log/access-log.module.js';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([Users, UsersPassword], 'dbConnection'),
         PassportModule.register({ defaultStrategy: 'jwt' }),
         MailModule,
+        AccessLogModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
             inject: [ConfigService],
